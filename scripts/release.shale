@@ -217,9 +217,16 @@ end
 
 -- Steps 5 and 6: the installed marker says, for a rollback, whether the
 -- binaries were moved.
+-- The log of the server just stopped, kept under name in the release's
+-- folder: the next job on the log starts it empty.
+function rel_keep_log(t, name)
+  if exists(t.log) then must(run({"cp", "-p", real(t.log), real(t.dir) .. "/" .. name}, {timeout_ms = 10000, tail = 5})) end
+end
+
 function rel_install_and_check(t, before)
   rel_stop(t)
-  print("stopped the old server")
+  rel_keep_log(t, "server.log")
+  print("stopped the old server; its log kept")
   if t.rollback then
     rel_move_bin(t, "", ".swap")
     rel_move_bin(t, ".prev", "")
@@ -237,6 +244,7 @@ end
 -- Step 7: the old binary back and running, and checked as the new one was.
 function rel_put_back(t, before)
   rel_stop(t)
+  rel_keep_log(t, "server.failed.log")
   -- A release's binaries say by themselves how far it got: .new still
   -- there is not installed. A rollback's swap has its marker.
   local b = t.data .. "/bin/essay-surface"
@@ -336,7 +344,6 @@ if exists(t.comments) then
   for k in keys(before.ids) do n = n + #before.ids[k] end
   print("comments kept: " .. files .. " files, " .. n .. " comments, in " .. t.dir .. "/comments, each compared")
 end
-if exists(t.log) then must(run({"cp", "-p", real(t.log), real(t.dir) .. "/server.log"}, {timeout_ms = 10000, tail = 5})) end
 before.look = rel_look(t, t.dir .. "/before", before.ids)
 print("the old server's index and " .. #rel_commented(t) .. " commented notes kept in " .. t.dir .. "/before")
 
@@ -345,7 +352,9 @@ local done = attempt(rel_install_and_check, t, before)
 if done.ok then
   for l in done.value do print(l) end
   local back = "cd " .. real(".") .. " && shale repos:essay-surface/scripts/release.shale data=" .. t.data .. " port=" .. t.port .. " rollback=1"
-  print("RELEASED: running " .. rel_commit(t, "") .. " on " .. t.addr .. "; to roll back to " .. rel_commit(t, ".prev") .. ": " .. back)
+  local said = "RELEASED"
+  if t.rollback then said = "ROLLED BACK, as asked" end
+  print(said .. ": running " .. rel_commit(t, "") .. " on " .. t.addr .. "; to roll back to " .. rel_commit(t, ".prev") .. ": " .. back)
 else
   print("FAILED: " .. done.error .. " (line " .. done.line .. ")")
   local back = attempt(rel_put_back, t, before)
