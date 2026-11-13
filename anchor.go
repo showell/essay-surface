@@ -54,6 +54,14 @@ func wordFeatures(s string) []uint64 {
 	return f
 }
 
+// diceBound is the most dice could give two multisets of these sizes.
+func diceBound(a, b []uint64) int {
+	if len(a)+len(b) == 0 {
+		return 1000
+	}
+	return 2000 * min(len(a), len(b)) / (len(a) + len(b))
+}
+
 // dice is the Sørensen-Dice similarity of two sorted multisets, in
 // thousandths: 1000 for the same, 0 for nothing shared.
 func dice(a, b []uint64) int {
@@ -204,6 +212,11 @@ func (ix *blockIndex) place(c *Comment) (placed, int) {
 		b := &blocks[k]
 		if b.feat == nil {
 			b.feat = features(b.Text)
+		}
+		// Dice can be no more than its sizes allow: skip a block too
+		// much larger or smaller than the comment's text to win.
+		if diceBound(fa, b.feat) < best && diceBound(fq, b.feat) < best {
+			continue
 		}
 		s := max(dice(fa, b.feat), dice(fq, b.feat))
 		if s > best || (s == best && abs(k-c.Ord) < abs(bestAt-c.Ord)) {

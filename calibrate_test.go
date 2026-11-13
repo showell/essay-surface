@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -29,18 +28,6 @@ func notesForAnchoring(t testing.TB) map[string][]Block {
 		out[filepath.Base(p)] = blocks
 	}
 	return out
-}
-
-// trigramFeatures is a text's overlapping three-character pieces, of its
-// lowercased words joined by single spaces.
-func trigramFeatures(s string) []uint64 {
-	t := []rune(" " + strings.Join(words(s), " ") + " ")
-	f := make([]uint64, 0, len(t))
-	for k := 0; k+3 <= len(t); k++ {
-		f = append(f, hashOf(string(t[k:k+3])))
-	}
-	sort.Slice(f, func(a, b int) bool { return f[a] < f[b] })
-	return f
 }
 
 // A simulated edit changes block k of a note and says which blocks of the
@@ -145,10 +132,10 @@ func cut(s string) string {
 	return s
 }
 
-// simulate comments on up to 150 blocks of each note, edits each block
+// simulate comments on up to per blocks of each note, edits each block
 // every way, and counts where resolve puts the comment. A block with an
 // exact twin elsewhere is left out: the twin takes its comments, by design.
-func simulate(notes map[string][]Block) map[string][]tally {
+func simulate(notes map[string][]Block, per int) map[string][]tally {
 	out := map[string][]tally{}
 	for _, e := range simEdits {
 		out[e.name] = make([]tally, len(simThresholds))
@@ -162,7 +149,7 @@ func simulate(notes map[string][]Block) map[string][]tally {
 		for k := range blocks {
 			blocks[k].feat = features(blocks[k].Text)
 		}
-		step := max(1, len(blocks)/150)
+		step := max(1, len(blocks)/per)
 		for k := 0; k < len(blocks); k += step {
 			if len(strings.Fields(blocks[k].Text)) == 0 || count[normalize(blocks[k].Text)] > 1 {
 				continue
@@ -212,21 +199,44 @@ func slicesContains(ks []int, k int) bool {
 }
 
 func TestSimulateAnchoring(t *testing.T) {
-	for _, kind := range []string{"words", "trigrams"} {
-		if kind == "words" {
-			features = wordFeatures
-		} else {
-			features = trigramFeatures
-		}
-		res := simulate(notesForAnchoring(t))
-		for _, e := range simEdits {
-			for ti, th := range simThresholds {
-				r := res[e.name][ti]
-				t.Logf("%-8s T=%d %-12s cases %5d: right %5d, on another block %4d, orphaned %4d", kind, th, e.name, r.cases, r.right, r.wrong, r.lost)
-			}
-		}
-		t.Logf("%s: deleted, then on another block at T=600:\n%s", kind, strings.Join(simShown, "\n"))
-		simShown = nil
+	real := os.Getenv("ESSAY_NOTES") != ""
+	per := 50
+	if real {
+		per = 150
 	}
-	features = wordFeatures
+	res := simulate(notesForAnchoring(t), per)
+	for _, e := range simEdits {
+		for ti, th := range simThresholds {
+			r := res[e.name][ti]
+			t.Logf("T=%d %-12s cases %5d: right %5d, on another block %4d, orphaned %4d", th, e.name, r.cases, r.right, r.wrong, r.lost)
+		}
+	}
+	t.Logf("deleted, then on another block at T=600:\n%s", strings.Join(simShown, "\n"))
+	simShown = nil
+	if real {
+		return // the real notes are measured, not pinned: they change every day
+	}
+	// On the samples, at the threshold in use. An edit in place must always
+	// keep its comments; the rest are pinned, so a change to anchoring that
+	// moves them is seen and its journal entry written.
+	at := -1
+	for ti, th := range simThresholds {
+		if th == similarEnough {
+			at = ti
+		}
+	}
+	want := map[string]tally{
+		"typo": {}, "one word": {}, "a sentence": {}, "rewrapped": {}, "insert above": {},
+		"split":       {wrong: 1},
+		"merged":      {wrong: 6, lost: 234},
+		"moved, typo": {wrong: 6, lost: 23},
+		"deleted":     {wrong: 8},
+	}
+	for _, e := range simEdits {
+		got := res[e.name][at]
+		w := want[e.name]
+		if got.wrong != w.wrong || got.lost != w.lost || got.right != got.cases-w.wrong-w.lost || got.cases == 0 {
+			t.Errorf("%s: %d cases, %d on another block, %d orphaned; want %d and %d", e.name, got.cases, got.wrong, got.lost, w.wrong, w.lost)
+		}
+	}
 }
