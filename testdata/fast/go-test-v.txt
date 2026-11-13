@@ -1,0 +1,10 @@
+=== RUN   TestPasses
+    a_test.go:10: a passing test's log, never shown
+--- PASS: TestPasses (0.00s)
+=== RUN   TestFails
+    b_test.go:20: what the failing test said
+--- FAIL: TestFails (0.00s)
+=== RUN   TestPanics
+panic: runtime error: slice bounds out of range [:-1] [recovered]
+	/home/x/c_test.go:30 +0x885
+FAIL	essay-surface	0.042s

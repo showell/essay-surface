@@ -57,6 +57,14 @@ function said(name, r, what)
   print("ok  " .. name .. ", " .. r.ms .. " ms, cpu " .. r.cpu_ms .. " ms" .. what)
 end
 
+-- A known-bad go test -v output, read first: a reader that loses a failure
+-- or a panic would let a red test stage say too little.
+local known = failed_tests(read("testdata/fast/go-test-v.txt"))
+if join(known.names, ",") ~= "TestFails,TestPanics (panic)" or find(join(known.lines, "\n"), "what the failing test said") == nil
+    or find(join(known.lines, "\n"), "never shown") ~= nil or find(join(known.lines, "\n"), "c_test.go:30") == nil then
+  fail("fast's reader of go test misreads testdata/fast/go-test-v.txt: " .. json_write(known))
+end
+
 local fmt = stage("gofmt", {"gofmt", "-l", "."}, {cpu_budget_ms = 5000})
 if fmt.out ~= "" then
   print(fmt.out)
