@@ -94,6 +94,11 @@ func isDigit(c byte) bool { return '0' <= c && c <= '9' }
 // again.
 var errNoGit = errors.New("no git")
 
+// Git matches every pathspec against every commit's changes, so past a
+// few names one log of the whole folder is faster: on the real notes, 197
+// names took 3.2 s and the folder 0.7 s.
+const gitPathspecsMost = 16
+
 // gitDates gives the time of the last commit that touched each named file
 // in dir, in one git log. A name git does not know is left out.
 func gitDates(dir string, names []string) (map[string]time.Time, error) {
@@ -101,7 +106,16 @@ func gitDates(dir string, names []string) (map[string]time.Time, error) {
 	if len(names) == 0 {
 		return out, nil
 	}
-	args := append([]string{"log", "--no-renames", "--relative", "--format=%x00%ct", "--name-only", "--"}, names...)
+	wanted := make(map[string]bool, len(names))
+	for _, name := range names {
+		wanted[name] = true
+	}
+	args := []string{"log", "--no-renames", "--relative", "--format=%x00%ct", "--name-only", "--"}
+	if len(names) > gitPathspecsMost {
+		args = append(args, ".")
+	} else {
+		args = append(args, names...)
+	}
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_LITERAL_PATHSPECS=1")
@@ -124,7 +138,7 @@ func gitDates(dir string, names []string) (map[string]time.Time, error) {
 			continue
 		}
 		// The log is newest first, so a name's first commit is its last.
-		if _, seen := out[line]; line != "" && !seen {
+		if _, seen := out[line]; wanted[line] && !seen {
 			out[line] = when
 		}
 	}
