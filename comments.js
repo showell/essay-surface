@@ -21,7 +21,7 @@
   }
 
   function label(btn, n) {
-    btn.textContent = n ? String(n) : "note";
+    btn.textContent = n ? String(n) : "reply";
     btn.classList.toggle("has", n > 0);
     btn.setAttribute("aria-label", n ? n + (n === 1 ? " comment" : " comments") + "; add one" : "Comment on this");
   }
