@@ -2,6 +2,8 @@
 
 A small web app for writing notes in markdown and reading them in a browser, with comments on any paragraph. A Go server, a JavaScript front end.
 
+Phones are out of scope: the pages are made for, and checked in, a desktop browser.
+
 Two checks, run from the repo root:
 
 - `shale scripts/fast.shale` after every edit: gofmt, vet, the JS, the tests, the comment flow through the real server. A few seconds.

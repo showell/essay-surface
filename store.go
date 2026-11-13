@@ -71,6 +71,12 @@ type store struct {
 // newStore watches the folders and renders every note. The comments
 // folder may be missing, but not the folder it goes in.
 func newStore(dir, comments string) (*store, error) {
+	// The parent is checked, never made: a mistyped -comments would
+	// otherwise grow a folder of comments somewhere nobody looks.
+	parent := filepath.Dir(comments)
+	if info, err := os.Stat(parent); err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("the comments folder's parent %s is not a folder; make it, or pass another -comments", parent)
+	}
 	w, err := newWatcher()
 	if err != nil {
 		return nil, err

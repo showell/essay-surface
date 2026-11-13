@@ -54,7 +54,7 @@ stage("audit", {"shale", "scripts/audit.shale", "dir=" .. dir}, {cpu_budget_ms =
 stage("dates", {"shale", "scripts/dates.shale", "dir=" .. dir}, {cpu_budget_ms = 20000}, 4, failed)
 stage("bench", {"shale", "scripts/bench.shale", "dir=" .. dir, "rounds=500"}, {cpu_budget_ms = 40000}, 6, failed)
 
-print("by hand still: an eye test of a note and its comments on a phone and a desktop browser")
+print("by hand still: an eye test of a note and its comments in a desktop browser")
 if #failed > 0 then
   print("NOT SAFE: " .. join(failed, ", ") .. " failed")
   fail("not safe to ship")

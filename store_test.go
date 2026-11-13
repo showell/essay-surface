@@ -9,6 +9,32 @@ import (
 	"time"
 )
 
+// The comments folder may be missing at the start, but its parent must be
+// a folder: the store refuses to start, naming it, and makes nothing.
+func TestCommentsParentMustExist(t *testing.T) {
+	dir := t.TempDir()
+	writeNote(t, dir, "a.md", "# A\n", time.Now())
+	file := filepath.Join(dir, "a.md")
+	for _, parent := range []string{filepath.Join(dir, "missing"), file} {
+		s, err := newStore(dir, filepath.Join(parent, "comments"))
+		if err == nil {
+			s.close()
+			t.Fatalf("%s: the store started", parent)
+		}
+		if want := "the comments folder's parent " + parent + " is not a folder"; !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: said %q, want it to say %q", parent, err, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "missing")); !os.IsNotExist(err) {
+		t.Error("the missing parent was made")
+	}
+	s, err := newStore(dir, filepath.Join(dir, "comments"))
+	if err != nil {
+		t.Fatalf("a parent that is there, its comments folder not yet: %v", err)
+	}
+	s.close()
+}
+
 // The index page is made once and kept until a note changes. A comment
 // changes a note's page but never the index.
 func TestIndexKeptUntilANoteChanges(t *testing.T) {
