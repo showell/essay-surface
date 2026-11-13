@@ -1,17 +1,24 @@
--- audit.shale: render every note through the real server and look for
--- markdown left over outside code (**, ](, |---, a backtick): each is a
--- construct the renderer missed. It also checks each page's comment
--- markup: as many data-c blocks as fingerprints in #blocks. One curl
--- fetches every page into .run/pages; the server is stopped before the
--- pages are read, and its comments folder is .run/comments, so a real
--- one is never read or written.
+-- audit.shale: every note rendered through the real server, each page
+-- checked for markdown left over outside code (**, ](, |---, a backtick),
+-- which is a construct the renderer missed, and for its comment markup: as
+-- many data-c blocks as fingerprints in #blocks. One curl fetches every
+-- page into .run/audit/pages; the server is stopped before they are read.
+-- Its comments folder is .run/audit/comments, so a real one is never read
+-- or written.
 --   shale scripts/audit.shale                        (the sample notes)
 --   shale scripts/audit.shale dir=/abs/path/notes     (any folder)
+-- Its last line is "audit: PASS", or a stop that says what was found.
 -- Budgets: each page is cut four times and its fingerprints parsed (about
 -- 170k steps a page), and the fetch's argv and the index are kept across
 -- each yield.
 -- budget: steps=200000000 kept_bytes=16000000
 local dir = arg("dir", "notes")
+const RUN = ".run/audit"
+
+-- Backticks outside code that were looked at and are faithful: each quotes
+-- a lone ``` or `\`` in prose, which CommonMark renders as written. A page
+-- whose count changes is looked at again.
+const FAITHFUL_TICKS = [=[{"essay-surface-monday.md": 3, "essay-surface-quality.md": 3, "update-53-and-the-checklists-first-day.md": 2}]=]
 
 -- s with every open...close stretch cut out, by split and find (builtins:
 -- re_replace runs in the prelude and costs a step a character).
@@ -27,7 +34,7 @@ end
 
 function audit(p)
   local page = read(p)
-  local blocks = json_read(between(page, "<script id=\"blocks\" type=\"application/json\">", "</script>"))
+  local blocks = essay_hashes(page)
   local markup = cut(cut(page, "<script", "</script>"), "<style>", "</style>")
   local marked = #find_all(markup, " data-c=\"")
   local body = cut(cut(markup, "<pre", "</pre>"), "<code>", "</code>")
@@ -35,37 +42,38 @@ function audit(p)
     blocks = #blocks, mismatch = marked - #blocks}
 end
 
-must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
-remove_tree(".run")
-mkdir(".run/pages")
-local job = job_start({"./essay-surface", "-notes", dir, "-comments", ".run/comments"}, {log = ".run/server.log", cwd = ".", want = "build: the server we just built"})
-local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
-if w.ended ~= "found" then
-  job_stop(job)
-  fail("the server did not start: " .. w.ended)
-end
-local index = http_get("http://127.0.0.1:9300/").body
-local argv = {"curl", "-s", "--max-time", "60"}
+essay_build()
+essay_fresh(RUN .. "/pages")
+local job = essay_start(dir, RUN .. "/comments", RUN .. "/server.log")
+local index = attempt(http_get, "http://127.0.0.1:9300/")
 local names = {}
-for m in re_find_all(index, "href=\"/notes/([^\"]+)\"") do
-  push(names, m.group)
-  push(argv, "-o")
-  push(argv, ".run/pages/" .. m.group .. ".html")
-  push(argv, "http://127.0.0.1:9300/notes/" .. m.group)
+local fetched = nil
+if index.ok then
+  names = essay_names(index.value.body)
+  local argv = {"curl", "-s", "--max-time", "60"}
+  for n in names do
+    push(argv, "-o")
+    push(argv, RUN .. "/pages/" .. n .. ".html")
+    push(argv, "http://127.0.0.1:9300/notes/" .. n)
+  end
+  fetched = run(argv, {timeout_ms = 60000, tail = 5})
 end
-local fetched = run(argv, {timeout_ms = 60000, tail = 5})
-job_stop(job)
+essay_stop(job, RUN .. "/server.log")
+if not index.ok then fail("the index: " .. index.error) end
 must(fetched)
 
+local faithful = json_read(FAITHFUL_TICKS)
 local rows = {}
 local bad = {}
+local unexplained = {}
 local blocks = 0
 for n in names do
-  local a = audit(".run/pages/" .. n .. ".html")
+  local a = audit(RUN .. "/pages/" .. n .. ".html")
   a.note = n
   blocks = blocks + a.blocks
   if a.stars + a.links + a.tables + a.ticks > 0 then push(rows, a) end
   if a.mismatch ~= 0 then push(bad, a) end
+  if a.stars + a.links + a.tables > 0 or a.ticks ~= get(faithful, n, 0) then push(unexplained, a) end
   yield()
 end
 sort(rows, "ticks", "desc")
@@ -75,3 +83,9 @@ if #bad > 0 then
   print(table(take(bad, 20), {"blocks", "mismatch", "note"}))
   fail(#bad .. " pages whose data-c count is not their fingerprint count")
 end
+if #unexplained > 0 then
+  local which = {}
+  for a in take(unexplained, 10) do push(which, a.note .. " (" .. a.ticks .. " ticks)") end
+  fail(#unexplained .. " pages with leftovers not known to be faithful: " .. join(which, ", "))
+end
+print("audit: PASS")

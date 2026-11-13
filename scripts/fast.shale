@@ -1,0 +1,42 @@
+-- fast.shale: the check for every edit, a few seconds. gofmt, vet, the
+-- front end's syntax, every Go test on the sample notes, and the comment
+-- flow through the real server. It stops at the first stage that fails.
+-- Each stage is held to a CPU budget, which a busy box does not break as
+-- it does wall time; a budget is several times the stage's usual cost, so
+-- only a real slowdown passes it.
+--   shale scripts/fast.shale
+-- Its last line is "fast: PASS", or a stop that names the stage.
+
+-- One stage: its program run, its verdict, its times on one line.
+function stage(name, argv, opts)
+  opts.timeout_ms = 120000
+  opts.whole = 400000
+  opts.stage = name
+  local r = run(argv, opts)
+  if r.code ~= 0 then
+    print(join(last(lines(r.out), 60), "\n"))
+    fail(name .. ": " .. argv[1] .. " exited " .. r.code)
+  end
+  return r
+end
+
+function said(name, r, what)
+  print("ok  " .. name .. ", " .. r.ms .. " ms, cpu " .. r.cpu_ms .. " ms" .. what)
+end
+
+local fmt = stage("gofmt", {"gofmt", "-l", "."}, {cpu_budget_ms = 5000})
+if fmt.out ~= "" then
+  print(fmt.out)
+  fail("gofmt: these files need gofmt -w")
+end
+said("gofmt", fmt, "")
+said("vet", stage("vet", {"go", "vet", "."}, {cpu_budget_ms = 20000}), "")
+-- go test embeds comments.js but never parses it.
+said("js", stage("js", {"node", "--check", "comments.js"}, {cpu_budget_ms = 5000, want = "check: the front end's syntax, which go test cannot see"}), "")
+-- The budget covers compiling the tests after an edit (about 4 s of CPU)
+-- and running them (about 3 s).
+local test = stage("test", {"go", "test", "-count=1", "-v", "."}, {cpu_budget_ms = 30000})
+said("test", test, ": " .. #re_lines(test.out, "^--- PASS") .. " tests passed, " .. #re_lines(test.out, "^    --- PASS") .. " subtests")
+local smoke = stage("smoke", {"shale", "scripts/comments_smoke.shale"}, {cpu_budget_ms = 30000})
+said("smoke", smoke, ": " .. #re_lines(smoke.out, "^ok: ") .. " checks through the real server")
+print("fast: PASS")

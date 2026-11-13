@@ -1,0 +1,62 @@
+-- What every script at this root shares: the server built, started on a
+-- folder and stopped, a scratch folder made fresh, and the few readings
+-- of a page the scripts take.
+
+function essay_build()
+  must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
+end
+
+-- An empty folder at dir, whatever was there.
+function essay_fresh(dir)
+  if exists(dir) then remove_tree(dir) end
+  mkdir(dir)
+end
+
+-- The server just built, on a folder of notes, its comments in their own
+-- folder, its log at log. Waits until it listens; one that does not start
+-- stops the run with its log.
+function essay_start(notes, comments, log)
+  local job = job_start({"./essay-surface", "-notes", notes, "-comments", comments}, {log = log, cwd = ".", want = "build: the server we just built"})
+  local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
+  if w.ended ~= "found" then
+    job_stop(job)
+    print(read(log))
+    fail("the server did not start: " .. w.ended)
+  end
+  return job
+end
+
+-- Stops the server, which says on its way out how many requests it served
+-- and its CPU time after the start: {requests, cpu_ms}, or nil when the
+-- line is missing (a server killed, not stopped).
+function essay_stop(job, log)
+  job_stop(job)
+  for l in lines(read(log)) do
+    local m = re_find(l, "stopping: ([0-9]+) requests served in ([0-9]+) ms of cpu")
+    if m ~= nil then return {requests = parse_int(m.groups[1]), cpu_ms = parse_int(m.groups[2])} end
+  end
+  return nil
+end
+
+-- The block fingerprints a note's page carries.
+function essay_hashes(page)
+  return json_read(between(page, "<script id=\"blocks\" type=\"application/json\">", "</script>"))
+end
+
+-- The notes an index page lists, in its order.
+function essay_names(index)
+  local out = {}
+  for m in re_find_all(index, "href=\"/notes/([^\"]+)\"") do push(out, m.group) end
+  return out
+end
+
+-- The box's one-minute load average, in hundredths, and its CPUs. Wall
+-- times mean something only when the load is well under the CPUs.
+function essay_load()
+  local up = must(run({"uptime"}, {timeout_ms = 5000, tail = 3})).out
+  local m = re_find(up, "load average: ([0-9]+)\\.([0-9][0-9])")
+  if m == nil then fail("uptime said no load: " .. up) end
+  local cpus = parse_int(trim(must(run({"nproc"}, {timeout_ms = 5000, tail = 3})).out))
+  return {hundredths = parse_int(m.groups[1]) * 100 + parse_int(m.groups[2]), cpus = cpus,
+    said = m.groups[1] .. "." .. m.groups[2] .. " on " .. cpus .. " CPUs"}
+end

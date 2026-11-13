@@ -25,7 +25,7 @@ end
 function flow()
   local out = {}
   local p = page()
-  local hs = json_read(between(p, "<script id=\"blocks\" type=\"application/json\">", "</script>"))
+  local hs = essay_hashes(p)
   want(#hs == 4, "4 blocks: the title and three paragraphs", out)
   local r = http("POST", BASE .. "/notes/smoke.md/comments", {headers = {"Content-Type: application/json"},
     body = json_write({block = 2, hash = hs[3], name = "Smoke", text = "Is <this> claim & that one true?"})})
@@ -49,19 +49,13 @@ function flow()
   return out
 end
 
-must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
-if exists(DIR) then remove_tree(DIR) end
+essay_build()
+essay_fresh(DIR)
 mkdir(DIR .. "/notes")
 create(NOTE, "# Smoke\n\nFirst paragraph, the setting.\n\nSecond paragraph, the claim to argue.\n\nThird paragraph, the end.\n")
-local job = job_start({"./essay-surface", "-notes", DIR .. "/notes", "-comments", DIR .. "/comments"}, {log = DIR .. ".log", cwd = ".", want = "build: the server we just built"})
-local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
-if w.ended ~= "found" then
-  print(read(DIR .. ".log"))
-  job_stop(job)
-  fail("the server did not start: " .. w.ended)
-end
+local job = essay_start(DIR .. "/notes", DIR .. "/comments", DIR .. "/server.log")
 local result = attempt(flow)
-job_stop(job)
+essay_stop(job, DIR .. "/server.log")
 print("server stopped")
 if not result.ok then fail("the smoke test stopped: " .. result.error .. " (line " .. result.line .. ")") end
 for l in result.value do print(l) end

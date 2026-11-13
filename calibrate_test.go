@@ -118,12 +118,8 @@ var simEdits = []simEdit{
 	}},
 }
 
-// tally is how one simulated edit came out, at one threshold.
+// tally is how one simulated edit came out.
 type tally struct{ right, wrong, lost, cases int }
-
-var simThresholds = []int{400, 500, 600, 700}
-
-var simShown []string
 
 func cut(s string) string {
 	if len(s) > 90 {
@@ -135,10 +131,11 @@ func cut(s string) string {
 // simulate comments on up to per blocks of each note, edits each block
 // every way, and counts where resolve puts the comment. A block with an
 // exact twin elsewhere is left out: the twin takes its comments, by design.
-func simulate(notes map[string][]Block, per int) map[string][]tally {
-	out := map[string][]tally{}
+// shown is a few deleted blocks whose comments went to another block.
+func simulate(notes map[string][]Block, per int) (out map[string]*tally, shown []string) {
+	out = map[string]*tally{}
 	for _, e := range simEdits {
-		out[e.name] = make([]tally, len(simThresholds))
+		out[e.name] = &tally{}
 	}
 	for _, blocks := range notes {
 		count := map[string]int{}
@@ -161,32 +158,26 @@ func simulate(notes map[string][]Block, per int) map[string][]tally {
 					continue
 				}
 				cc := *c
-				found, score := indexBlocks(after).place(&cc)
-				for ti, th := range simThresholds {
-					p := found
-					if p.how == similar && score < th {
-						p = placed{-1, orphaned}
-					}
-					t := &out[e.name][ti]
-					t.cases++
-					switch {
-					case p.block < 0 && len(want) == 0:
-						t.right++
-					case p.block < 0:
-						t.lost++
-					case slicesContains(want, p.block):
-						t.right++
-					default:
-						t.wrong++
-						if e.name == "deleted" && th == 600 && len(simShown) < 6 {
-							simShown = append(simShown, "  "+cut(blocks[k].norm)+"\n    -> "+cut(after[p.block].norm))
-						}
+				p := resolve(after, []*Comment{&cc})[0]
+				t := out[e.name]
+				t.cases++
+				switch {
+				case p.block < 0 && len(want) == 0:
+					t.right++
+				case p.block < 0:
+					t.lost++
+				case slicesContains(want, p.block):
+					t.right++
+				default:
+					t.wrong++
+					if e.name == "deleted" && len(shown) < 6 {
+						shown = append(shown, "  "+cut(blocks[k].norm)+" -> "+cut(after[p.block].norm))
 					}
 				}
 			}
 		}
 	}
-	return out
+	return out, shown
 }
 
 func slicesContains(ks []int, k int) bool {
@@ -198,33 +189,38 @@ func slicesContains(ks []int, k int) bool {
 	return false
 }
 
+// The edits that leave a block where it was: their comments must all stay.
+var editsInPlace = map[string]bool{"typo": true, "one word": true, "a sentence": true, "rewrapped": true, "insert above": true}
+
+// On the real notes, the most comments in a thousand that may land on the
+// wrong block, by edit: a wrong placement misleads, where an orphan is
+// honest. Measured on 2026-11-13 at 50 blocks a note: see the journal.
+var mostWrongPerMille = map[string]int{"split": 10, "merged": 20, "moved, typo": 10, "deleted": 25}
+
 func TestSimulateAnchoring(t *testing.T) {
-	real := os.Getenv("ESSAY_NOTES") != ""
-	per := 50
-	if real {
-		per = 150
-	}
-	res := simulate(notesForAnchoring(t), per)
+	res, shown := simulate(notesForAnchoring(t), 50)
 	for _, e := range simEdits {
-		for ti, th := range simThresholds {
-			r := res[e.name][ti]
-			t.Logf("T=%d %-12s cases %5d: right %5d, on another block %4d, orphaned %4d", th, e.name, r.cases, r.right, r.wrong, r.lost)
+		r := res[e.name]
+		t.Logf("%-12s cases %5d: right %5d, on another block %4d, orphaned %4d", e.name, r.cases, r.right, r.wrong, r.lost)
+	}
+	t.Logf("deleted, then on another block:\n%s", strings.Join(shown, "\n"))
+	if os.Getenv("ESSAY_NOTES") != "" {
+		// The real notes change every day, so they are held to rates.
+		for _, e := range simEdits {
+			r := res[e.name]
+			switch {
+			case r.cases == 0:
+				t.Errorf("%s: no cases", e.name)
+			case editsInPlace[e.name] && r.right != r.cases:
+				t.Errorf("%s: %d of %d comments kept, an edit in place must keep them all", e.name, r.right, r.cases)
+			case !editsInPlace[e.name] && r.wrong*1000 > mostWrongPerMille[e.name]*r.cases:
+				t.Errorf("%s: %d of %d comments on another block, past %d in a thousand", e.name, r.wrong, r.cases, mostWrongPerMille[e.name])
+			}
 		}
+		return
 	}
-	t.Logf("deleted, then on another block at T=600:\n%s", strings.Join(simShown, "\n"))
-	simShown = nil
-	if real {
-		return // the real notes are measured, not pinned: they change every day
-	}
-	// On the samples, at the threshold in use. An edit in place must always
-	// keep its comments; the rest are pinned, so a change to anchoring that
+	// On the samples the counts are pinned, so a change to anchoring that
 	// moves them is seen and its journal entry written.
-	at := -1
-	for ti, th := range simThresholds {
-		if th == similarEnough {
-			at = ti
-		}
-	}
 	want := map[string]tally{
 		"typo": {}, "one word": {}, "a sentence": {}, "rewrapped": {}, "insert above": {},
 		"split":       {wrong: 1},
@@ -233,7 +229,7 @@ func TestSimulateAnchoring(t *testing.T) {
 		"deleted":     {wrong: 8},
 	}
 	for _, e := range simEdits {
-		got := res[e.name][at]
+		got := res[e.name]
 		w := want[e.name]
 		if got.wrong != w.wrong || got.lost != w.lost || got.right != got.cases-w.wrong-w.lost || got.cases == 0 {
 			t.Errorf("%s: %d cases, %d on another block, %d orphaned; want %d and %d", e.name, got.cases, got.wrong, got.lost, w.wrong, w.lost)

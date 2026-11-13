@@ -1,0 +1,62 @@
+-- full.shale: the check before anything ships, on the real notes. Every
+-- stage runs, one after another (a timing never runs beside another
+-- stage), and the last line says plainly whether it is safe: "SAFE TO
+-- SHIP", or "NOT SAFE" and the stages that failed.
+--   fast       scripts/fast.shale: gofmt, vet, the JS, the tests, the smoke
+--   race       the tests under the race detector
+--   anchoring  the anchoring simulation on the real notes, held to its rates
+--   audit      scripts/audit.shale: every real note rendered, nothing left over
+--   dates      scripts/dates.shale: a fresh clone gives the same index
+--   bench      scripts/bench.shale on a copy of the real notes: CPU a request
+--              held to budgets a busy box cannot break; wall times judged
+--              only when the box is quiet
+-- Each stage has a CPU budget, several times its usual cost, so a stage
+-- gone slow fails here rather than passing slowly: that stop ends the
+-- check at once, naming the stage.
+--   shale scripts/full.shale
+--   shale scripts/full.shale dir=/abs/path/notes
+-- The real notes are only read: the bench copies them first, and every
+-- server's comments go to a scratch folder under .run.
+local dir = arg("dir", "/home/steve/showell_repos/essay-repl-server/notes")
+
+-- One stage: its program, its verdict and times, and its last lines.
+function stage(name, argv, opts, shown, failed)
+  opts.timeout_ms = 110000
+  opts.tail = 400
+  opts.stage = name
+  local r = run(argv, opts)
+  local verdict = "PASS"
+  if r.code ~= 0 then
+    verdict = "FAIL"
+    push(failed, name)
+  end
+  print("== " .. name .. ": " .. verdict .. ", " .. r.ms .. " ms, cpu " .. r.cpu_ms .. " ms")
+  local own = {}
+  for l in lines(r.out) do
+    if starts_with(l, "── time:") then break end
+    if not starts_with(l, "── ") then push(own, l) end
+  end
+  for l in last(own, shown) do print("   " .. l) end
+  return r
+end
+
+local load = essay_load()
+print("box: load " .. load.said .. "; notes: " .. dir)
+local failed = {}
+stage("fast", {"shale", "scripts/fast.shale"}, {cpu_budget_ms = 40000}, 6, failed)
+-- The simulation is pure and runs on one goroutine, and is ten times
+-- slower under -race; the anchoring stage runs it on the real notes.
+stage("race", {"go", "test", "-race", "-count=1", "-skip", "TestSimulateAnchoring", "."}, {cpu_budget_ms = 40000}, 2, failed)
+-- About 15 s of CPU: 187,000 simulated edits, most of it the similarity
+-- search for the blocks that were moved, merged or deleted.
+stage("anchoring", {"go", "test", "-count=1", "-run", "TestSimulateAnchoring", "-v", "."}, {cpu_budget_ms = 45000, env = {ESSAY_NOTES = dir}, re = "cases|->|--- |^ok|^FAIL|_test.go"}, 17, failed)
+stage("audit", {"shale", "scripts/audit.shale", "dir=" .. dir}, {cpu_budget_ms = 20000}, 6, failed)
+stage("dates", {"shale", "scripts/dates.shale", "dir=" .. dir}, {cpu_budget_ms = 20000}, 4, failed)
+stage("bench", {"shale", "scripts/bench.shale", "dir=" .. dir, "rounds=500"}, {cpu_budget_ms = 40000}, 6, failed)
+
+print("by hand still: an eye test of a note and its comments on a phone and a desktop browser")
+if #failed > 0 then
+  print("NOT SAFE: " .. join(failed, ", ") .. " failed")
+  fail("not safe to ship")
+end
+print("SAFE TO SHIP")

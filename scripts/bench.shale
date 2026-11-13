@@ -1,14 +1,24 @@
--- bench.shale: build the server, start it on a folder of notes, and time
--- real HTTP requests with curl's own clock (one curl, one kept-alive
--- connection, so no process start is counted). Times the index, every
--- note, and the largest note; then posts comments (per= on every note,
--- big= on the largest) and times the notes and the largest note again, so
--- a page with comments is measured beside the same page without.
--- Comments go to .run/bench/comments, made fresh each run: the bench never
--- writes to a real comments folder. The server is stopped on every path
--- but a budget's stop.
+-- bench.shale: the server timed on a copy of a folder of notes, by real
+-- HTTP requests on curl's own clock (one curl, one kept-alive connection,
+-- so no process start is counted). It times the index, every note, and
+-- the largest note; then posts comments (per= on every note, big= on the
+-- largest) and times the notes and the largest note again, so a page with
+-- comments is measured beside the same page without.
+--
+-- Its verdict has two parts:
+--   cpu      the server's CPU time a request, which it reports when
+--            stopped, held to CPU_BUDGET_US. A busy box slows a request's
+--            wall time, not the CPU it takes, so this holds on any box.
+--   latency  the medians, held to their budgets only when the box was
+--            quiet (a load under half its CPUs) before and after; else
+--            reported and said to be not judged.
+--
+-- The notes are copied to .run/bench/notes and the comments go to
+-- .run/bench/comments, made fresh each run: the bench reads the folder
+-- once and never writes to it.
 --   shale scripts/bench.shale                       (the sample notes)
---   shale scripts/bench.shale dir=/abs/path/notes    (any folder; the server reads it)
+--   shale scripts/bench.shale dir=/abs/path/notes    (any folder)
+-- Its last line is "bench: PASS", or a stop that says which budget broke.
 -- budget: steps=60000000 reads=20000 kept_bytes=16000000
 local dir = arg("dir", "notes")
 local rounds = arg("rounds", 200)
@@ -17,6 +27,14 @@ local big_n = arg("big", 100)
 const BASE = "http://127.0.0.1:9300"
 const BIG = "gopher-roc-demo.md"
 const RUN = ".run/bench"
+-- The most CPU a request may take in each phase, in microseconds: a
+-- little over twice what the real notes took on 2026-11-13 (index 140 and
+-- 160, notes 173 and 179, comments 344 and 365). Reading every note's file
+-- for each index request, as the server did before, costs about 1,400.
+const CPU_BUDGET_US = {index = 400, notes = 400, comments = 800}
+-- The medians on a quiet box, in microseconds. The index was 2,276 us
+-- while it read every note's file on each request; it is about 105 now.
+const MEDIAN_BUDGET_US = [=[{"index": 500, "notes, no comments": 500, "largest note, no comments": 1000, "notes, with comments": 500, "largest note, with comments": 1000}]=]
 
 -- curl's time_total is seconds with six decimals: "0.000412" is 412 us.
 function micros(s)
@@ -61,21 +79,19 @@ function timed(urls)
   return {times = times, bytes = bytes, bad = bad}
 end
 
-function report(label, t)
+-- A measured kind of request: its report line, and its median for the verdict.
+function report(out, label, t)
   local s = t.times
-  return label .. ": " .. #s .. " requests, " .. t.bad .. " not 200, " .. (t.bytes // #s) .. " bytes average; median " ..
-    show_us(pct(s, 50)) .. ", p90 " .. show_us(pct(s, 90)) .. ", p99 " .. show_us(pct(s, 99)) .. ", max " .. show_us(s[#s])
+  push(out.lines, label .. ": " .. #s .. " requests, " .. t.bad .. " not 200, " .. (t.bytes // #s) .. " bytes average; median " ..
+    show_us(pct(s, 50)) .. ", p90 " .. show_us(pct(s, 90)) .. ", p99 " .. show_us(pct(s, 99)) .. ", max " .. show_us(s[#s]))
+  out.medians[label] = pct(s, 50)
+  out.bad = out.bad + t.bad
 end
 
 function repeat_url(u, n)
   local out = {}
   for i = 1, n do push(out, u) end
   return out
-end
-
--- The block fingerprints a fetched page carries.
-function hashes_of(path)
-  return json_read(between(read(path), "<script id=\"blocks\" type=\"application/json\">", "</script>"))
 end
 
 -- One curl posting every comment; gives the count of 201s.
@@ -93,7 +109,7 @@ end
 
 -- Comments on n blocks of a note, spread evenly, from its fetched page.
 function comments_for(name, page, n, posts)
-  local hs = hashes_of(page)
+  local hs = essay_hashes(read(page))
   if #hs == 0 then return 0 end
   for i = 0, n - 1 do
     local k = i * #hs // n
@@ -103,24 +119,37 @@ function comments_for(name, page, n, posts)
   return n
 end
 
--- Everything the server is up for. Its lines are returned, not printed,
--- so the caller can stop the server before anything else.
-function measure(rounds, per, big_n)
+-- The phases, each on a server of its own, so the CPU it reports on its
+-- way out is that phase's. Their lines are returned, not printed, so the
+-- caller can stop the server before anything else.
+function note_urls()
   local out = {}
-  local index = http_get(BASE .. "/").body
-  local names = {}
-  local notes = {}
-  for m in re_find_all(index, "href=\"/notes/([^\"]+)\"") do
-    push(names, m.group)
-    push(notes, BASE .. "/notes/" .. m.group)
-  end
-  push(out, #notes .. " notes in the index")
-  push(out, report("index", timed(repeat_url(BASE .. "/", rounds))))
+  for n in essay_names(http_get(BASE .. "/").body) do push(out, BASE .. "/notes/" .. n) end
+  return out
+end
+
+function phase_index(rounds)
+  local out = {lines = {}, medians = {}, bad = 0}
+  report(out, "index", timed(repeat_url(BASE .. "/", rounds)))
+  return out
+end
+
+function phase_notes(rounds)
+  local out = {lines = {}, medians = {}, bad = 0}
+  local notes = note_urls()
+  push(out.lines, #notes .. " notes in the index")
   -- A note's page is made on its first request; time the kept pages.
   timed(notes)
-  push(out, report("notes, no comments", timed(notes)))
-  push(out, report("largest note, no comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds))))
+  report(out, "notes, no comments", timed(notes))
+  report(out, "largest note, no comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds)))
+  return out
+end
 
+function phase_comments(rounds, per, big_n)
+  local out = {lines = {}, medians = {}, bad = 0}
+  local names = essay_names(http_get(BASE .. "/").body)
+  local notes = {}
+  for n in names do push(notes, BASE .. "/notes/" .. n) end
   -- Every page once, saved, for its fingerprints.
   local argv = {"curl", "-s", "--max-time", "60"}
   for n in names do
@@ -140,29 +169,70 @@ function measure(rounds, per, big_n)
     yield()
   end
   local made = post_all(posts)
-  push(out, "posted " .. made .. " comments of " .. wanted .. " (" .. per .. " a note, " .. big_n .. " on " .. BIG .. ")")
+  push(out.lines, "posted " .. made .. " comments of " .. wanted .. " (" .. per .. " a note, " .. big_n .. " on " .. BIG .. ")")
   if made ~= wanted then fail("only " .. made .. " of " .. wanted .. " comments were taken") end
   -- The first request for each page makes it with its comments; time the
   -- kept pages after.
   timed(notes)
-  push(out, report("notes, with comments", timed(notes)))
-  push(out, report("largest note, " .. big_n .. " comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds))))
+  report(out, "notes, with comments", timed(notes))
+  report(out, "largest note, with comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds)))
   return out
 end
 
-must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
-if exists(RUN) then remove_tree(RUN) end
-mkdir(RUN .. "/pages")
-local job = job_start({"./essay-surface", "-notes", dir, "-comments", RUN .. "/comments"}, {log = RUN .. ".log", cwd = ".", want = "build: the server we just built"})
-local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
-if w.ended ~= "found" then
-  print(read(RUN .. ".log"))
-  job_stop(job)
-  fail("the server did not start: " .. w.ended)
+-- A phase's end, its server stopped: its lines kept, its medians merged
+-- into all, and its CPU a request held to its budget. Gives the CPU line.
+function phase_end(name, job, log, result, budget_us, all)
+  local cpu = essay_stop(job, log)
+  if not result.ok then fail("the bench stopped in " .. name .. ": " .. result.error .. " (line " .. result.line .. ")") end
+  for l in result.value.lines do push(all.lines, l) end
+  for k in keys(result.value.medians) do all.medians[k] = result.value.medians[k] end
+  if result.value.bad > 0 then fail(name .. ": " .. result.value.bad .. " requests were not 200") end
+  if cpu == nil then fail(name .. ": the server did not say its CPU time on its way out") end
+  local us = cpu.cpu_ms * 1000 // cpu.requests
+  local said = "cpu, " .. name .. ": " .. us .. " us a request over " .. cpu.requests .. " requests (" .. cpu.cpu_ms .. " ms), budget " .. budget_us
+  if us > budget_us then fail(said) end
+  return said .. ": PASS"
 end
-print(lines(read(RUN .. ".log"))[1])
-local result = attempt(measure, rounds, per, big_n)
-job_stop(job)
-print("server stopped")
-if not result.ok then fail("the bench stopped: " .. result.error .. " (line " .. result.line .. ")") end
-for l in result.value do print(l) end
+
+essay_build()
+essay_fresh(RUN)
+mkdir(RUN .. "/pages")
+must(run({"cp", "-rp", dir, RUN .. "/notes"}, {timeout_ms = 60000, tail = 5}))
+local all = {lines = {}, medians = {}}
+local verdicts = {}
+local before = essay_load()
+
+local job = essay_start(RUN .. "/notes", RUN .. "/comments", RUN .. "/index.log")
+local r = attempt(phase_index, rounds)
+push(verdicts, phase_end("index", job, RUN .. "/index.log", r, CPU_BUDGET_US.index, all))
+for l in lines(read(RUN .. "/index.log")) do
+  if find(l, "rendered ") ~= nil or find(l, "cpu: ") ~= nil then print(l) end
+end
+
+job = essay_start(RUN .. "/notes", RUN .. "/comments", RUN .. "/notes.log")
+r = attempt(phase_notes, rounds)
+push(verdicts, phase_end("notes", job, RUN .. "/notes.log", r, CPU_BUDGET_US.notes, all))
+
+job = essay_start(RUN .. "/notes", RUN .. "/comments", RUN .. "/comments.log")
+r = attempt(phase_comments, rounds, per, big_n)
+push(verdicts, phase_end("comments", job, RUN .. "/comments.log", r, CPU_BUDGET_US.comments, all))
+
+local after = essay_load()
+print("servers stopped")
+for l in all.lines do print(l) end
+for l in verdicts do print(l) end
+local result = {value = all}
+
+local quiet = before.hundredths * 2 < before.cpus * 100 and after.hundredths * 2 < after.cpus * 100
+if not quiet then
+  print("latency: not judged, the box was busy (load " .. before.said .. " before, " .. after.said .. " after)")
+else
+  local budget = json_read(MEDIAN_BUDGET_US)
+  local over = {}
+  for label in keys(budget) do
+    if result.value.medians[label] > budget[label] then push(over, label .. " median " .. show_us(result.value.medians[label]) .. ", budget " .. show_us(budget[label])) end
+  end
+  if #over > 0 then fail("latency: " .. join(over, "; ")) end
+  print("latency: every median within budget (load " .. before.said .. " before, " .. after.said .. " after): PASS")
+end
+print("bench: PASS")

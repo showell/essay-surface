@@ -1,0 +1,68 @@
+-- dates.shale: a note's date must not come from its file's time, which a
+-- fresh clone resets. The folder's repository is cloned into .run/dates
+-- (every file there gets the clone's time), and the index of the clone
+-- must give every note the same date, in the same order, as the index of
+-- the folder itself. A note not committed yet is in the folder alone, and
+-- is counted, not compared.
+--   shale scripts/dates.shale                       (the sample notes)
+--   shale scripts/dates.shale dir=/abs/path/notes    (a folder in a git repository)
+-- Its last line is "dates: PASS", or a stop that names a note.
+-- Budget: re_find_all runs in the prelude, about 2.5 million steps an
+-- index page of 500 notes.
+-- budget: steps=30000000
+local dir = arg("dir", "notes")
+const RUN = ".run/dates"
+const BASE = "http://127.0.0.1:9300"
+
+-- The index of a server on a folder: each note's name and date, in order,
+-- and the server's line about where the dates came from.
+function index_of(notes, tag)
+  local log = RUN .. "/" .. tag .. ".log"
+  local job = essay_start(notes, RUN .. "/" .. tag .. "-comments", log)
+  local r = attempt(http_get, BASE .. "/")
+  essay_stop(job, log)
+  if not r.ok then fail(tag .. ": " .. r.error) end
+  local rows = {}
+  for m in re_find_all(r.value.body, "href=\"/notes/([^\"]+)\">[^<]*</a><span class=\"date\">([0-9-]+)<") do
+    push(rows, {note = m.groups[1], date = m.groups[2]})
+  end
+  local said = ""
+  for l in lines(read(log)) do
+    if find(l, "dates: ") ~= nil then said = sub(l, find(l, "dates: "), #l) end
+  end
+  return {rows = rows, said = said}
+end
+
+essay_build()
+essay_fresh(RUN)
+local os_dir = dir
+if not starts_with(dir, "/") then os_dir = real(dir) end
+local top = trim(must(run({"git", "-C", os_dir, "rev-parse", "--show-toplevel"}, {timeout_ms = 10000, tail = 3})).out)
+local prefix = trim(must(run({"git", "-C", os_dir, "rev-parse", "--show-prefix"}, {timeout_ms = 10000, tail = 3})).out)
+local c = must(run({"git", "clone", "-q", top, RUN .. "/clone"}, {timeout_ms = 60000, tail = 10}))
+print("cloned " .. top .. " in " .. c.ms .. " ms")
+local here = index_of(dir, "folder")
+local there = index_of(RUN .. "/clone/" .. prefix, "clone")
+print("folder: " .. here.said)
+print("clone:  " .. there.said)
+if find(there.said, ", 0 from their files") == nil then fail("in the clone, some notes are dated by their files: " .. there.said) end
+
+local cloned = {}
+for row in there.rows do cloned[row.note] = row.date end
+local order = {}
+local uncommitted = 0
+for row in here.rows do
+  if not has_key(cloned, row.note) then
+    uncommitted = uncommitted + 1
+  else
+    if cloned[row.note] ~= row.date then fail(row.note .. ": " .. row.date .. " in the folder, " .. cloned[row.note] .. " in the clone") end
+    push(order, row.note)
+  end
+end
+local i = 1
+for row in there.rows do
+  if i <= #order and row.note == order[i] then i = i + 1 end
+end
+if i <= #order then fail("the clone's index has another order, from " .. order[i]) end
+print(#order .. " notes with the same date in the same place; " .. uncommitted .. " in the folder alone, not committed yet")
+print("dates: PASS")

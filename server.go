@@ -11,9 +11,13 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -308,6 +312,32 @@ func main() {
 		git = s.gitErr.Error()
 	}
 	log.Printf("dates: %d from the notes, %d from git, %d from their files (%s)", from[dateFromNote], from[dateFromGit], from[dateFromFile], git)
+	started := cpuTime()
+	log.Printf("cpu: %d ms to start", started.Milliseconds())
+	var served atomic.Int64
+	h := s.handler()
+	counted := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served.Add(1)
+		h.ServeHTTP(w, r)
+	})
+	// A bench stops the server with SIGTERM and reads this line: CPU time
+	// is what a busy box does not inflate.
+	go func() {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
+		<-stop
+		log.Printf("stopping: %d requests served in %d ms of cpu after the start", served.Load(), (cpuTime() - started).Milliseconds())
+		os.Exit(0)
+	}()
 	log.Printf("listening on http://%s/", *addr)
-	log.Fatal(http.ListenAndServe(*addr, s.handler()))
+	log.Fatal(http.ListenAndServe(*addr, counted))
+}
+
+// cpuTime is the CPU time this process has used, user and system.
+func cpuTime() time.Duration {
+	var ru syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+		log.Fatal(err)
+	}
+	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
 }
