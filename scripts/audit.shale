@@ -57,7 +57,7 @@ print("fixtures: bad.html caught, good.html passed")
 essay_build()
 essay_fresh(RUN .. "/pages")
 local job = essay_start(dir, RUN .. "/comments", RUN .. "/server.log")
-local index = attempt(http_get, "http://127.0.0.1:9300/")
+local index = attempt(http_get, essay_base() .. "/")
 local names = {}
 local fetched = nil
 if index.ok then
@@ -66,7 +66,7 @@ if index.ok then
   for n in names do
     push(argv, "-o")
     push(argv, RUN .. "/pages/" .. n .. ".html")
-    push(argv, "http://127.0.0.1:9300/notes/" .. n)
+    push(argv, essay_base() .. "/notes/" .. n)
   end
   fetched = run(argv, {timeout_ms = 60000, tail = 5})
 end

@@ -12,11 +12,18 @@ function essay_fresh(dir)
   mkdir(dir)
 end
 
+-- The checks' servers listen on a port of their own, 9310, so a check can
+-- run while a dev server holds 9300: release.shale runs the full check
+-- with one up.
+function essay_base()
+  return "http://127.0.0.1:9310"
+end
+
 -- The server just built, on a folder of notes, its comments in their own
 -- folder, its log at log. Waits until it listens; one that does not start
 -- stops the run with its log.
 function essay_start(notes, comments, log)
-  local job = job_start({"./essay-surface", "-notes", notes, "-comments", comments}, {log = log, cwd = ".", want = "build: the server we just built"})
+  local job = job_start({"./essay-surface", "-notes", notes, "-comments", comments, "-addr", "127.0.0.1:9310"}, {log = log, cwd = ".", want = "build: the server we just built"})
   local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
   if w.ended ~= "found" then
     job_stop(job)

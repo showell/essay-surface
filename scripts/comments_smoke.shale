@@ -6,13 +6,12 @@
 -- Everything the server is up for runs under attempt; the server is
 -- stopped before the verdict.
 --   shale scripts/comments_smoke.shale
-const BASE = "http://127.0.0.1:9300"
 const DIR = ".run/smoke"
 const NOTE = ".run/smoke/notes/smoke.md"
 const FILE = ".run/smoke/comments/smoke.md.jsonl"
 
 function page()
-  local r = http_get(BASE .. "/notes/smoke.md")
+  local r = http_get(essay_base() .. "/notes/smoke.md")
   if r.status ~= 200 then fail("the page: " .. r.status) end
   return r.body
 end
@@ -33,7 +32,7 @@ function flow()
   local p = page()
   local hs = essay_hashes(p)
   want(#hs == 4, "4 blocks: the title and three paragraphs", out)
-  local r = http("POST", BASE .. "/notes/smoke.md/comments", {headers = {"Content-Type: application/json"},
+  local r = http("POST", essay_base() .. "/notes/smoke.md/comments", {headers = {"Content-Type: application/json"},
     body = json_write({block = 2, hash = hs[3], name = "Smoke", text = "Is <this> claim & that one true?"})})
   want(r.status == 201, "a comment is posted (201)", out)
   p = page()

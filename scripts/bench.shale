@@ -24,7 +24,6 @@ local dir = arg("dir", "notes")
 local rounds = arg("rounds", 200)
 local per = arg("per", 3)
 local big_n = arg("big", 100)
-const BASE = "http://127.0.0.1:9300"
 const BIG = "gopher-roc-demo.md"
 const RUN = ".run/bench"
 -- The most CPU a request may take in each phase, in microseconds: a
@@ -113,7 +112,7 @@ function comments_for(name, page, n, posts)
   if #hs == 0 then return 0 end
   for i = 0, n - 1 do
     local k = i * #hs // n
-    push(posts, {url = BASE .. "/notes/" .. name .. "/comments",
+    push(posts, {url = essay_base() .. "/notes/" .. name .. "/comments",
       body = json_write({block = k, hash = hs[k + 1], name = "Bench", text = "A comment of a sentence or two, about as long as a real one is, number " .. i .. "."})})
   end
   return n
@@ -124,13 +123,13 @@ end
 -- caller can stop the server before anything else.
 function note_urls()
   local out = {}
-  for n in essay_names(http_get(BASE .. "/").body) do push(out, BASE .. "/notes/" .. n) end
+  for n in essay_names(http_get(essay_base() .. "/").body) do push(out, essay_base() .. "/notes/" .. n) end
   return out
 end
 
 function phase_index(rounds)
   local out = {lines = {}, medians = {}, bad = 0}
-  report(out, "index", timed(repeat_url(BASE .. "/", rounds)))
+  report(out, "index", timed(repeat_url(essay_base() .. "/", rounds)))
   return out
 end
 
@@ -141,21 +140,21 @@ function phase_notes(rounds)
   -- A note's page is made on its first request; time the kept pages.
   timed(notes)
   report(out, "notes, no comments", timed(notes))
-  report(out, "largest note, no comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds)))
+  report(out, "largest note, no comments", timed(repeat_url(essay_base() .. "/notes/" .. BIG, rounds)))
   return out
 end
 
 function phase_comments(rounds, per, big_n)
   local out = {lines = {}, medians = {}, bad = 0}
-  local names = essay_names(http_get(BASE .. "/").body)
+  local names = essay_names(http_get(essay_base() .. "/").body)
   local notes = {}
-  for n in names do push(notes, BASE .. "/notes/" .. n) end
+  for n in names do push(notes, essay_base() .. "/notes/" .. n) end
   -- Every page once, saved, for its fingerprints.
   local argv = {"curl", "-s", "--max-time", "60"}
   for n in names do
     push(argv, "-o")
     push(argv, RUN .. "/pages/" .. n)
-    push(argv, BASE .. "/notes/" .. n)
+    push(argv, essay_base() .. "/notes/" .. n)
   end
   must(run(argv, {timeout_ms = 120000, tail = 5}))
   local posts = {}
@@ -175,7 +174,7 @@ function phase_comments(rounds, per, big_n)
   -- kept pages after.
   timed(notes)
   report(out, "notes, with comments", timed(notes))
-  report(out, "largest note, with comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds)))
+  report(out, "largest note, with comments", timed(repeat_url(essay_base() .. "/notes/" .. BIG, rounds)))
   return out
 end
 

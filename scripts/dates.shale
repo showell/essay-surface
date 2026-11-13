@@ -12,14 +12,13 @@
 -- budget: steps=30000000
 local dir = arg("dir", "notes")
 const RUN = ".run/dates"
-const BASE = "http://127.0.0.1:9300"
 
 -- The index of a server on a folder: each note's name and date, in order,
 -- and the server's line about where the dates came from.
 function index_of(notes, tag)
   local log = RUN .. "/" .. tag .. ".log"
   local job = essay_start(notes, RUN .. "/" .. tag .. "-comments", log)
-  local r = attempt(http_get, BASE .. "/")
+  local r = attempt(http_get, essay_base() .. "/")
   essay_stop(job, log)
   if not r.ok then fail(tag .. ": " .. r.error) end
   local rows = {}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -329,8 +330,14 @@ func main() {
 		log.Printf("stopping: %d requests served in %d ms of cpu after the start", served.Load(), (cpuTime() - started).Milliseconds())
 		os.Exit(0)
 	}()
+	// "listening" is said once the port is ours: a script that waits for it
+	// must never go on to talk to whatever else holds the port.
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatal(err)
+	}
 	log.Printf("listening on http://%s/", *addr)
-	log.Fatal(http.ListenAndServe(*addr, counted))
+	log.Fatal(http.Serve(ln, counted))
 }
 
 // cpuTime is the CPU time this process has used, user and system.
