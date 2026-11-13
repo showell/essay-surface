@@ -571,6 +571,36 @@ left: pid 2484343: /home/steve/essay-dogfood/bin/essay-surface -notes /home/stev
 
 Only the human's server is left, the same pid as this morning, never touched. I didn't read or write `~/essay-dogfood`. The README now names the release and the checks' port.
 
+## Trial 5: the final script, once more
+
+Trial 2 ran before the log fix, so I ran the committed script (`f670595`, this journal's first commit) through a good release once more, after the trial reset above, and stopped the trial server after it:
+
+```shale
+-- trial 5: the final script, at f670595, a good release over 7f3fb5f, launched exactly as the real one will be but for the folder, data and port
+local r = run({"shale", "repos:essay-surface/scripts/release.shale", "data=essay-trial", "port=9300"}, {timeout_ms = 280000, tail = 40})
+print("exit " .. r.code .. ", " .. r.ms .. " ms wall, cpu " .. r.cpu_ms .. " ms")
+print(r.out)
+for p in procs() do
+  if p.args == "/tmp/claude-1000/essay-trial/bin/essay-surface -notes /tmp/claude-1000/essay-trial/notes -addr 127.0.0.1:9300" then print("stopped trial pid " .. p.pid .. ": " .. tostring(proc_stop(p))) end
+end
+print(json_write(job_wait("essay-trial/server.log.job", {timeout_ms = 10000})))
+for p in procs() do if p.name == "essay-surface" then print("left: pid " .. p.pid .. ": " .. p.args) end end
+```
+
+```text
+exit 0, 29646 ms wall, cpu 22361 ms
+full check: SAFE TO SHIP, 28434 ms
+...
+stopped the old server; its log kept
+...
+ok: all 7 comments from before on their pages and in their files
+RELEASED: running f670595 on 127.0.0.1:9300; to roll back to unknown: cd /tmp/claude-1000 && shale repos:essay-surface/scripts/release.shale data=essay-trial port=9300 rollback=1
+stopped trial pid 2506623: true
+left: pid 2484343: /home/steve/essay-dogfood/bin/essay-surface -notes /home/steve/essay-dogfood/notes -addr 127.0.0.1:9301
+```
+
+It passed, in 29.6 s; the anchoring stage was 14.3 s of it on a busier box. Nothing of mine is left running.
+
 ## Report
 
 **`scripts/release.shale`** runs the full check (it must say `SAFE TO SHIP`), then builds `bin/essay-surface.new`. It copies the comments to `releases/<when>/comments` and compares the copy, and keeps the old server's pages there, as the record of where every comment was. Then it stops the old server, keeps its binary as `bin/essay-surface.prev`, and starts the new one. It checks the index, a note, and that every comment is on the same block as before and still in its file. If any check fails, it puts the old binary back, starts it, and checks it the same way. Its last line says what's running and how to roll back. `rollback=1` swaps back to the last binary.
