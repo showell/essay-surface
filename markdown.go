@@ -20,6 +20,43 @@ func Render(src string) string {
 	return r.out.String()
 }
 
+// Block is one commentable block of a note: a paragraph, a heading, a
+// tight list item's text, a code fence or a table. Text is its markdown
+// source; End is the offset in the HTML just past the block's element,
+// where its comments go.
+type Block struct {
+	Text string
+	End  int
+	norm string   // normalize(Text), once prepared
+	hash string   // blockHash(Text)
+	feat []uint64 // features(Text), made only when a comment needs it
+}
+
+// RenderBlocks is Render with each commentable block marked data-c="K",
+// K counting from 0 in document order, and the blocks returned.
+func RenderBlocks(src string) (string, []Block) {
+	src = strings.ReplaceAll(src, "\r\n", "\n")
+	r := &renderer{slugs: map[string]int{}, mark: true}
+	r.blocks(strings.Split(src, "\n"), false)
+	return r.out.String(), r.marked
+}
+
+// open writes a commentable block's data-c attribute and records the
+// block; close records where its element ended.
+func (r *renderer) open(text string) {
+	if !r.mark {
+		return
+	}
+	r.out.WriteString(` data-c="` + strconv.Itoa(len(r.marked)) + `"`)
+	r.marked = append(r.marked, Block{Text: text})
+}
+
+func (r *renderer) close() {
+	if r.mark {
+		r.marked[len(r.marked)-1].End = r.out.Len()
+	}
+}
+
 // Title is the text of a document's first level-one heading outside a
 // code fence, or "".
 func Title(src string) string {
@@ -66,6 +103,8 @@ type renderer struct {
 	out        strings.Builder
 	slugs      map[string]int
 	paragraphs int
+	mark       bool
+	marked     []Block
 }
 
 // blocks renders a run of lines. In a tight list item, a paragraph is its
@@ -189,23 +228,30 @@ func (r *renderer) fence(lines []string, i int, ch byte, n, indent int, info str
 	if k := strings.IndexAny(lang, " \t"); k >= 0 {
 		lang = lang[:k]
 	}
+	start := i
+	for i < len(lines) && !isFenceClose(lines[i], ch, n) {
+		i++
+	}
+	body := lines[start:i]
+	if i < len(lines) {
+		i++ // the closer
+	}
+	r.out.WriteString("<pre")
+	r.open(strings.Join(body, "\n"))
 	if lang != "" {
-		r.out.WriteString(`<pre><code class="language-`)
+		r.out.WriteString(`><code class="language-`)
 		r.out.WriteString(escapeAttr(lang))
 		r.out.WriteString(`">`)
 	} else {
-		r.out.WriteString("<pre><code>")
+		r.out.WriteString("><code>")
 	}
-	for i < len(lines) {
-		if isFenceClose(lines[i], ch, n) {
-			i++
-			break
-		}
-		r.out.WriteString(escapeHTML(stripIndent(lines[i], indent)))
+	for _, line := range body {
+		r.out.WriteString(escapeHTML(stripIndent(line, indent)))
 		r.out.WriteByte('\n')
-		i++
 	}
-	r.out.WriteString("</code></pre>\n")
+	r.out.WriteString("</code></pre>")
+	r.close()
+	r.out.WriteByte('\n')
 	return i
 }
 
@@ -235,9 +281,13 @@ func atxHeading(line string) (level int, text string, ok bool) {
 func (r *renderer) heading(level int, text string) {
 	slug := r.slug(text)
 	tag := "h" + strconv.Itoa(level)
-	r.out.WriteString("<" + tag + ` id="` + slug + `">`)
+	r.out.WriteString("<" + tag + ` id="` + slug + `"`)
+	r.open(text)
+	r.out.WriteString(">")
 	r.out.WriteString(inline(text))
-	r.out.WriteString("</" + tag + ">\n")
+	r.out.WriteString("</" + tag + ">")
+	r.close()
+	r.out.WriteByte('\n')
 }
 
 // slug makes a heading's id: lowercase letters and digits, words joined by
@@ -428,16 +478,24 @@ func (r *renderer) table(lines []string, i int) int {
 	header := splitRow(lines[i])
 	aligns, _ := delimiterAligns(lines[i+1])
 	i += 2
-	r.out.WriteString("<div class=\"table-wrap\"><table>\n<thead><tr>")
+	start := i - 2
+	end := i
+	for end < len(lines) && !isBlank(lines[end]) && strings.Contains(lines[end], "|") {
+		end++
+	}
+	r.out.WriteString(`<div class="table-wrap"`)
+	r.open(strings.Join(lines[start:end], "\n"))
+	r.out.WriteString("><table>\n<thead><tr>")
 	r.cells("th", header, aligns)
 	r.out.WriteString("</tr></thead>\n<tbody>\n")
-	for i < len(lines) && !isBlank(lines[i]) && strings.Contains(lines[i], "|") {
+	for ; i < end; i++ {
 		r.out.WriteString("<tr>")
 		r.cells("td", splitRow(lines[i]), aligns)
 		r.out.WriteString("</tr>\n")
-		i++
 	}
-	r.out.WriteString("</tbody></table></div>\n")
+	r.out.WriteString("</tbody></table></div>")
+	r.close()
+	r.out.WriteByte('\n')
 	return i
 }
 
@@ -626,14 +684,28 @@ func (r *renderer) paragraph(lines []string, i int, tight bool) int {
 	text := strings.Join(lines[start:i], "\n")
 	text = strings.TrimSpace(text)
 	if tight {
+		// A tight item's text has no element of its own; marked, it gets a span.
+		if r.mark {
+			r.out.WriteString(`<span class="ct"`)
+			r.open(text)
+			r.out.WriteString(">")
+		}
 		r.out.WriteString(inline(text))
+		if r.mark {
+			r.out.WriteString("</span>")
+			r.close()
+		}
 		r.out.WriteByte('\n')
 		return i
 	}
 	r.paragraphs++
-	r.out.WriteString(`<p id="p` + strconv.Itoa(r.paragraphs) + `">`)
+	r.out.WriteString(`<p id="p` + strconv.Itoa(r.paragraphs) + `"`)
+	r.open(text)
+	r.out.WriteString(">")
 	r.out.WriteString(inline(text))
-	r.out.WriteString("</p>\n")
+	r.out.WriteString("</p>")
+	r.close()
+	r.out.WriteByte('\n')
 	return i
 }
 
