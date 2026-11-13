@@ -1,0 +1,2 @@
+/* A narrow window drops the pinned buttons. */
+@media (max-width:50rem){.cpin>.cbtn{display:none}}

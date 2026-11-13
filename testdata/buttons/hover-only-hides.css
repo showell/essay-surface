@@ -1,0 +1,2 @@
+/* Known good: only a hovered host's button is hidden, never a resting one. */
+.chost:hover>.cbtn{opacity:0}

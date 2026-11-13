@@ -1,0 +1,2 @@
+/* The check cannot weigh !important, so it refuses the sheet. */
+.cbtn{opacity:1 !important}

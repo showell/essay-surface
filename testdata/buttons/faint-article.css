@@ -1,0 +1,3 @@
+/* Each opacity passes alone; together they are 0.4. */
+article{opacity:.8}
+.cbtn{opacity:.5}

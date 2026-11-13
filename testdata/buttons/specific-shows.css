@@ -1,0 +1,3 @@
+/* Known good: a more specific rule shows what .cbtn hid. */
+.cbtn{opacity:0}
+.chost>.cbtn,.ct>.cbtn,.cpin>.cbtn{opacity:.8}
