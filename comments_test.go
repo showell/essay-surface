@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -93,6 +94,17 @@ func TestPostComment(t *testing.T) {
 	_, page = get(t, h, "/notes/a.md")
 	if i, j := strings.Index(page, "doubt"), strings.Index(page, "Agreed."); i < 0 || j < i || strings.Count(page, `class="cmts"`) != 1 {
 		t.Error("two comments on a block are not one thread, in order")
+	}
+}
+
+// Every field of a comment that reaches the page is the commenter's or the
+// file's, so each is escaped: a name of markup is shown, not run.
+func TestEveryCommentFieldEscaped(t *testing.T) {
+	const m = `<i x="1">&`
+	var b bytes.Buffer
+	writeComment(&b, &Comment{ID: m, Time: m, Name: m, Text: m, Quote: m}, true)
+	if got := b.String(); strings.Contains(got, "<i") || strings.Count(got, "&lt;i x=&#34;1&#34;&gt;&amp;") != 5 {
+		t.Errorf("a field is not escaped: %s", got)
 	}
 }
 
