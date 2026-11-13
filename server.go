@@ -1,10 +1,7 @@
 package main
 
-// The server: each note is rendered once and kept, keyed by its modified
-// time and size, and its page with its comments is kept beside it, keyed
-// by the comments file's too, so a request is two stats and a write.
-// Editing a note or its comments on disk rebuilds the page on the next
-// request for it.
+// The server: the handlers and the pages. The store (store.go) keeps every
+// page made, so a request is a drain of the kernel's news and a write.
 
 import (
 	"bytes"
@@ -14,53 +11,11 @@ import (
 	"html"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
-
-// A note is never changed once made: a new rendering or a new page is a
-// new note in the map, so a reader holding the old one is safe.
-type note struct {
-	name     string
-	title    string // HTML-escaped text, no tags
-	modified time.Time
-	size     int64
-	body     string  // the rendered note, blocks marked
-	blocks   []Block // its commentable blocks
-	page     []byte  // the whole page with its comments, or nil until made
-	comments fileState
-}
-
-// fileState is what a comments file was when a page was made from it.
-type fileState struct {
-	modified time.Time
-	size     int64 // -1 for no file
-}
-
-func statComments(path string) fileState {
-	info, err := os.Stat(path)
-	if err != nil {
-		return fileState{size: -1}
-	}
-	return fileState{info.ModTime(), info.Size()}
-}
-
-type store struct {
-	dir      string // the notes
-	comments string // the comments, one file a note
-	mu       sync.RWMutex
-	notes    map[string]*note
-	write    sync.Mutex // one change to the comment files at a time
-}
-
-func newStore(dir, comments string) *store {
-	return &store{dir: dir, comments: comments, notes: map[string]*note{}}
-}
 
 // validName is a note's file name: one path element ending in .md.
 func validName(name string) bool {
@@ -68,128 +23,14 @@ func validName(name string) bool {
 		!strings.HasPrefix(name, ".")
 }
 
-// get gives the note's current rendering, rendering it again if the file
-// changed since. A missing file is (nil, nil).
-func (s *store) get(name string, info os.FileInfo) (*note, error) {
-	s.mu.RLock()
-	n := s.notes[name]
-	s.mu.RUnlock()
-	if n != nil && n.modified.Equal(info.ModTime()) && n.size == info.Size() {
-		return n, nil
-	}
-	src, err := os.ReadFile(filepath.Join(s.dir, name))
-	if err != nil {
-		return nil, err
-	}
-	n = &note{name: name, modified: info.ModTime(), size: info.Size()}
-	text := string(src)
-	n.title = TitleHTML(Title(text))
-	if n.title == "" {
-		n.title = html.EscapeString(strings.TrimSuffix(name, ".md"))
-	}
-	n.body, n.blocks = RenderBlocks(text)
-	indexBlocks(n.blocks)
-	s.mu.Lock()
-	s.notes[name] = n
-	s.mu.Unlock()
-	return n, nil
-}
-
-// page gives the note with its page made from its comments as they are
-// now. Placing the comments may heal some (anchor.go), and then the
-// comments file is written: this happens only after the note changed.
-func (s *store) page(name string, info os.FileInfo) (*note, error) {
-	n, err := s.get(name, info)
-	if err != nil {
-		return nil, err
-	}
-	path := commentsPath(s.comments, name)
-	if n.page != nil && n.comments == statComments(path) {
-		return n, nil
-	}
-	s.write.Lock()
-	defer s.write.Unlock()
-	state := statComments(path)
-	cs, err := readComments(path)
-	if err != nil {
-		return nil, err
-	}
-	places := resolve(n.blocks, cs)
-	healed := false
-	for i, c := range cs {
-		if heal(c, n.blocks, places[i]) {
-			healed = true
-		}
-	}
-	if healed {
-		if err := writeComments(path, cs); err != nil {
-			return nil, err
-		}
-		state = statComments(path)
-	}
-	m := *n
-	m.comments = state
-	m.page = notePage(&m, cs, places)
-	s.mu.Lock()
-	if cur := s.notes[name]; cur == n {
-		s.notes[name] = &m
-	}
-	s.mu.Unlock()
-	return &m, nil
-}
-
-// all gives every note in the folder, newest first, then by name.
-func (s *store) all() ([]*note, error) {
-	entries, err := os.ReadDir(s.dir)
-	if err != nil {
-		return nil, err
-	}
-	list := make([]*note, 0, len(entries))
-	seen := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !validName(e.Name()) {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue // removed between the listing and the stat
-		}
-		n, err := s.get(e.Name(), info)
-		if err != nil {
-			continue
-		}
-		seen[n.name] = true
-		list = append(list, n)
-	}
-	s.mu.Lock()
-	for name := range s.notes {
-		if !seen[name] {
-			delete(s.notes, name)
-		}
-	}
-	s.mu.Unlock()
-	sort.Slice(list, func(a, b int) bool {
-		if !list[a].modified.Equal(list[b].modified) {
-			return list[a].modified.After(list[b].modified)
-		}
-		return list[a].name < list[b].name
-	})
-	return list, nil
-}
-
 func (s *store) serveIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
 	start := time.Now()
-	list, err := s.all()
+	page, err := s.indexPage()
 	if err != nil {
-		http.Error(w, "cannot read the notes folder", http.StatusInternalServerError)
+		http.Error(w, "cannot read the notes folder: "+err.Error(), http.StatusInternalServerError)
 		log.Print(err)
 		return
 	}
-	page := indexPage(list)
 	writePage(w, page, start)
 }
 
@@ -200,16 +41,15 @@ func (s *store) serveNote(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	info, err := os.Stat(filepath.Join(s.dir, name))
-	if err != nil || !info.Mode().IsRegular() {
-		http.NotFound(w, r)
-		return
-	}
-	n, err := s.page(name, info)
+	n, err := s.page(name)
 	if err != nil {
 		// A comments file that does not read is said, not skipped.
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Print(err)
+		return
+	}
+	if n == nil {
+		http.NotFound(w, r)
 		return
 	}
 	writePage(w, n.page, start)
@@ -251,13 +91,13 @@ func (s *store) postComment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	info, err := os.Stat(filepath.Join(s.dir, name))
-	if err != nil || !info.Mode().IsRegular() {
-		http.NotFound(w, r)
+	n, err := s.note(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Print(err)
 		return
 	}
-	n, err := s.get(name, info)
-	if err != nil {
+	if n == nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -369,7 +209,7 @@ func notePage(n *note, cs []*Comment, places []placed) []byte {
 	pageHead(&b, n.title)
 	b.WriteString(commentStyle)
 	b.WriteString(`<nav><a href="/">All notes</a> · <span class="date">`)
-	b.WriteString(n.modified.Format("2006-01-02"))
+	b.WriteString(n.date.Format("2006-01-02"))
 	b.WriteString("</span></nav>\n<article>\n")
 	at := 0
 	for k, blk := range n.blocks {
@@ -441,7 +281,7 @@ func indexPage(list []*note) []byte {
 		b.WriteString(`">`)
 		b.WriteString(n.title)
 		b.WriteString(`</a><span class="date">`)
-		b.WriteString(n.modified.Format("2006-01-02"))
+		b.WriteString(n.date.Format("2006-01-02"))
 		b.WriteString("</span></li>\n")
 	}
 	b.WriteString("</ul>\n</main></body></html>\n")
@@ -456,13 +296,18 @@ func main() {
 	if *comments == "" {
 		*comments = filepath.Join(filepath.Dir(filepath.Clean(*dir)), "comments")
 	}
-	s := newStore(*dir, *comments)
 	start := time.Now()
-	list, err := s.all()
+	s, err := newStore(*dir, *comments)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("rendered %d notes from %s in %s; comments in %s", len(list), *dir, time.Since(start).Round(time.Millisecond), *comments)
+	from := s.dateSources()
+	log.Printf("rendered %d notes from %s in %s; comments in %s", len(s.list()), *dir, time.Since(start).Round(time.Millisecond), *comments)
+	git := fmt.Sprintf("git in %s", s.gitTook.Round(time.Millisecond))
+	if s.gitErr != nil {
+		git = s.gitErr.Error()
+	}
+	log.Printf("dates: %d from the notes, %d from git, %d from their files (%s)", from[dateFromNote], from[dateFromGit], from[dateFromFile], git)
 	log.Printf("listening on http://%s/", *addr)
 	log.Fatal(http.ListenAndServe(*addr, s.handler()))
 }

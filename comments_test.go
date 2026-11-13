@@ -48,7 +48,7 @@ const commentNote = "# Note\n\nFirst paragraph here.\n\nSecond paragraph, the on
 func setup(t *testing.T) (string, http.Handler, []string) {
 	dir := t.TempDir()
 	writeNote(t, dir, "a.md", commentNote, time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC))
-	h := testStore(dir).handler()
+	h := testStore(t, dir).handler()
 	_, page := get(t, h, "/notes/a.md")
 	hs := hashesOf(t, page)
 	if len(hs) != 4 {
@@ -181,7 +181,10 @@ func TestCommentsFollowEdits(t *testing.T) {
 	writeNote(t, dir, "a.md", "# Note\n\nAn added paragraph.\n\nFirst paragraph here.\n\nThird paragraph to end.\n", day.Add(time.Minute))
 	_, page = get(t, h, "/notes/a.md")
 	i := strings.Index(page, `<section class="orphans">`)
-	if i < 0 || !strings.Contains(page[i:], "on the claim") || strings.Contains(page[:i], "on the claim") {
+	if i < 0 {
+		t.Fatal("a deleted paragraph's comment left no orphans section")
+	}
+	if !strings.Contains(page[i:], "on the claim") || strings.Contains(page[:i], "on the claim") {
 		t.Error("a deleted paragraph's comment is not with the orphans")
 	}
 	if !strings.Contains(page[:i], `end.</p><div class="cmts" data-for="3">`) || !strings.Contains(page[:i], "on the end") {
@@ -286,7 +289,7 @@ func TestThreadFollowsEveryKindOfBlock(t *testing.T) {
 	dir := t.TempDir()
 	md := "## A heading\n\n- an item\n- another\n  - nested\n\n1. loose\n\n2. items\n\n```go\ncode\n```\n\n| a |\n|---|\n| 1 |\n\n> quoted\n"
 	writeNote(t, dir, "k.md", md, time.Now())
-	h := testStore(dir).handler()
+	h := testStore(t, dir).handler()
 	_, page := get(t, h, "/notes/k.md")
 	hs := hashesOf(t, page)
 	for k := range hs {
@@ -330,7 +333,7 @@ func benchComments(b *testing.B, h http.Handler, note string, n int) {
 
 func BenchmarkNoteWith100Comments(b *testing.B) {
 	dir := benchDir(b, 500)
-	h := testStore(dir).handler()
+	h := testStore(b, dir).handler()
 	benchComments(b, h, "note-000.md", 100)
 	get(b, h, "/notes/note-000.md")
 	b.ResetTimer()
@@ -343,11 +346,10 @@ func BenchmarkNoteWith100Comments(b *testing.B) {
 // or its comments change: placing 100 comments and making the page.
 func BenchmarkPageRebuild100(b *testing.B) {
 	dir := benchDir(b, 500)
-	s := testStore(dir)
+	s := testStore(b, dir)
 	h := s.handler()
 	benchComments(b, h, "note-000.md", 100)
-	info, _ := os.Stat(filepath.Join(dir, "note-000.md"))
-	n, _ := s.get("note-000.md", info)
+	n, _ := s.note("note-000.md")
 	cs, _ := readComments(commentsPath(s.comments, "note-000.md"))
 	b.ResetTimer()
 	for b.Loop() {
