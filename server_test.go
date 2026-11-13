@@ -22,6 +22,9 @@ func writeNote(t testing.TB, dir, name, text string, modified time.Time) {
 	}
 }
 
+// testStore serves dir, with its comments in a folder inside it.
+func testStore(dir string) *store { return newStore(dir, filepath.Join(dir, "comments")) }
+
 func get(t testing.TB, h http.Handler, path string) (int, string) {
 	req := httptest.NewRequest("GET", path, nil)
 	rec := httptest.NewRecorder()
@@ -37,7 +40,7 @@ func TestIndexNewestFirst(t *testing.T) {
 	writeNote(t, dir, "new.md", "# The new one\n", day.Add(48*time.Hour))
 	writeNote(t, dir, "untitled.md", "no heading here\n", day.Add(24*time.Hour))
 	writeNote(t, dir, "skip.txt", "# not a note\n", day.Add(72*time.Hour))
-	h := newStore(dir).handler()
+	h := testStore(dir).handler()
 	code, body := get(t, h, "/")
 	if code != 200 {
 		t.Fatalf("index: %d", code)
@@ -59,12 +62,12 @@ func TestIndexNewestFirst(t *testing.T) {
 func TestNotePage(t *testing.T) {
 	dir := t.TempDir()
 	writeNote(t, dir, "a.md", "# Hello\n\nsome *text*\n", time.Now())
-	h := newStore(dir).handler()
+	h := testStore(dir).handler()
 	code, body := get(t, h, "/notes/a.md")
 	if code != 200 {
 		t.Fatalf("note: %d", code)
 	}
-	for _, want := range []string{"<title>Hello</title>", `<h1 id="hello">Hello</h1>`, "<em>text</em>", `name="viewport"`, `href="/"`} {
+	for _, want := range []string{"<title>Hello</title>", `<h1 id="hello" data-c="0">Hello</h1>`, `<em>text</em></p>`, `data-c="1"`, "<em>text</em>", `name="viewport"`, `href="/"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page lacks %q", want)
 		}
@@ -78,7 +81,7 @@ func TestNotFound(t *testing.T) {
 	outside := filepath.Join(filepath.Dir(dir), "outside.md")
 	os.WriteFile(outside, []byte("# secret\n"), 0o644)
 	defer os.Remove(outside)
-	h := newStore(dir).handler()
+	h := testStore(dir).handler()
 	for _, path := range []string{"/notes/missing.md", "/notes/a.txt", "/notes/", "/notes/sub.md",
 		"/notes/..%2Foutside.md", "/notes/../outside.md", "/notes/.md", "/other", "/notes/a.md/x"} {
 		code, body := get(t, h, path)
@@ -98,7 +101,7 @@ func TestEditedNoteRerenders(t *testing.T) {
 	dir := t.TempDir()
 	day := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
 	writeNote(t, dir, "a.md", "# First\n", day)
-	h := newStore(dir).handler()
+	h := testStore(dir).handler()
 	if _, body := get(t, h, "/notes/a.md"); !strings.Contains(body, "First") {
 		t.Fatal("first render")
 	}
@@ -135,7 +138,7 @@ func benchDir(b *testing.B, n int) string {
 }
 
 func BenchmarkIndex500(b *testing.B) {
-	h := newStore(benchDir(b, 500)).handler()
+	h := testStore(benchDir(b, 500)).handler()
 	get(b, h, "/") // render every note once, as the server does at start
 	b.ResetTimer()
 	for b.Loop() {
@@ -146,7 +149,7 @@ func BenchmarkIndex500(b *testing.B) {
 // The index's two phases apart: listing and stat-ing the folder, and
 // writing the page.
 func BenchmarkIndexScan500(b *testing.B) {
-	s := newStore(benchDir(b, 500))
+	s := testStore(benchDir(b, 500))
 	s.all()
 	b.ResetTimer()
 	for b.Loop() {
@@ -155,7 +158,7 @@ func BenchmarkIndexScan500(b *testing.B) {
 }
 
 func BenchmarkIndexPage500(b *testing.B) {
-	s := newStore(benchDir(b, 500))
+	s := testStore(benchDir(b, 500))
 	list, _ := s.all()
 	b.ResetTimer()
 	for b.Loop() {
@@ -164,7 +167,7 @@ func BenchmarkIndexPage500(b *testing.B) {
 }
 
 func BenchmarkNoteCached(b *testing.B) {
-	h := newStore(benchDir(b, 500)).handler()
+	h := testStore(benchDir(b, 500)).handler()
 	get(b, h, "/")
 	b.ResetTimer()
 	for b.Loop() {

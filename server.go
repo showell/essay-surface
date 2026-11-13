@@ -1,11 +1,14 @@
 package main
 
 // The server: each note is rendered once and kept, keyed by its modified
-// time and size, so a request is a stat and a write. Editing a note on disk
-// re-renders it on the next request that needs it.
+// time and size, and its page with its comments is kept beside it, keyed
+// by the comments file's too, so a request is two stats and a write.
+// Editing a note or its comments on disk rebuilds the page on the next
+// request for it.
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html"
@@ -20,22 +23,43 @@ import (
 	"time"
 )
 
+// A note is never changed once made: a new rendering or a new page is a
+// new note in the map, so a reader holding the old one is safe.
 type note struct {
 	name     string
 	title    string // HTML-escaped text, no tags
 	modified time.Time
 	size     int64
-	page     []byte // the whole HTML page
+	body     string  // the rendered note, blocks marked
+	blocks   []Block // its commentable blocks
+	page     []byte  // the whole page with its comments, or nil until made
+	comments fileState
+}
+
+// fileState is what a comments file was when a page was made from it.
+type fileState struct {
+	modified time.Time
+	size     int64 // -1 for no file
+}
+
+func statComments(path string) fileState {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fileState{size: -1}
+	}
+	return fileState{info.ModTime(), info.Size()}
 }
 
 type store struct {
-	dir   string
-	mu    sync.RWMutex
-	notes map[string]*note
+	dir      string // the notes
+	comments string // the comments, one file a note
+	mu       sync.RWMutex
+	notes    map[string]*note
+	write    sync.Mutex // one change to the comment files at a time
 }
 
-func newStore(dir string) *store {
-	return &store{dir: dir, notes: map[string]*note{}}
+func newStore(dir, comments string) *store {
+	return &store{dir: dir, comments: comments, notes: map[string]*note{}}
 }
 
 // validName is a note's file name: one path element ending in .md.
@@ -63,11 +87,55 @@ func (s *store) get(name string, info os.FileInfo) (*note, error) {
 	if n.title == "" {
 		n.title = html.EscapeString(strings.TrimSuffix(name, ".md"))
 	}
-	n.page = notePage(n, Render(text))
+	n.body, n.blocks = RenderBlocks(text)
+	indexBlocks(n.blocks)
 	s.mu.Lock()
 	s.notes[name] = n
 	s.mu.Unlock()
 	return n, nil
+}
+
+// page gives the note with its page made from its comments as they are
+// now. Placing the comments may heal some (anchor.go), and then the
+// comments file is written: this happens only after the note changed.
+func (s *store) page(name string, info os.FileInfo) (*note, error) {
+	n, err := s.get(name, info)
+	if err != nil {
+		return nil, err
+	}
+	path := commentsPath(s.comments, name)
+	if n.page != nil && n.comments == statComments(path) {
+		return n, nil
+	}
+	s.write.Lock()
+	defer s.write.Unlock()
+	state := statComments(path)
+	cs, err := readComments(path)
+	if err != nil {
+		return nil, err
+	}
+	places := resolve(n.blocks, cs)
+	healed := false
+	for i, c := range cs {
+		if heal(c, n.blocks, places[i]) {
+			healed = true
+		}
+	}
+	if healed {
+		if err := writeComments(path, cs); err != nil {
+			return nil, err
+		}
+		state = statComments(path)
+	}
+	m := *n
+	m.comments = state
+	m.page = notePage(&m, cs, places)
+	s.mu.Lock()
+	if cur := s.notes[name]; cur == n {
+		s.notes[name] = &m
+	}
+	s.mu.Unlock()
+	return &m, nil
 }
 
 // all gives every note in the folder, newest first, then by name.
@@ -137,12 +205,94 @@ func (s *store) serveNote(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	n, err := s.page(name, info)
+	if err != nil {
+		// A comments file that does not read is said, not skipped.
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Print(err)
+		return
+	}
+	writePage(w, n.page, start)
+}
+
+// commentRequest is what the page posts: the block by its number and its
+// fingerprint, as the page had them, and the comment.
+type commentRequest struct {
+	Block int    `json:"block"`
+	Hash  string `json:"hash"`
+	Name  string `json:"name"`
+	Text  string `json:"text"`
+}
+
+// postComment adds a comment to a block. The fingerprint must match the
+// block now at that number, or another block of the note: a page loaded
+// before an edit can still comment on a paragraph that moved, but not on
+// one that changed.
+func (s *store) postComment(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !validName(name) {
+		http.NotFound(w, r)
+		return
+	}
+	// JSON only: a form from another site cannot send it without asking first.
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "comments are posted as JSON", http.StatusUnsupportedMediaType)
+		return
+	}
+	var req commentRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		http.Error(w, "not a comment: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	cname, ctext, err := cleanComment(req.Name, req.Text)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	info, err := os.Stat(filepath.Join(s.dir, name))
+	if err != nil || !info.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
 	n, err := s.get(name, info)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	writePage(w, n.page, start)
+	k := req.Block
+	if k < 0 || k >= len(n.blocks) || n.blocks[k].hash != req.Hash {
+		var at []int
+		for j, b := range n.blocks {
+			if b.hash == req.Hash {
+				at = append(at, j)
+			}
+		}
+		if len(at) == 0 {
+			http.Error(w, "that paragraph has changed since the page loaded: reload to comment on it", http.StatusConflict)
+			return
+		}
+		k = nearest(at, req.Block)
+	}
+	s.write.Lock()
+	defer s.write.Unlock()
+	path := commentsPath(s.comments, name)
+	cs, err := readComments(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Print(err)
+		return
+	}
+	c := newComment(n.blocks, k, newID(), time.Now().UTC().Format(time.RFC3339), cname, ctext)
+	if err := writeComments(path, append(cs, c)); err != nil {
+		http.Error(w, "the comment was not saved", http.StatusInternalServerError)
+		log.Print(err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]any{"id": c.ID, "time": c.Time, "name": c.Name, "text": c.Text, "block": k})
 }
 
 // writePage sends a page with the server's own time in Server-Timing, so a
@@ -159,6 +309,7 @@ func (s *store) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.serveIndex)
 	mux.HandleFunc("GET /notes/", s.serveNote)
+	mux.HandleFunc("POST /notes/{name}/comments", s.postComment)
 	return mux
 }
 
@@ -201,16 +352,80 @@ func pageHead(b *bytes.Buffer, title string) {
 	b.WriteString("\n</head><body><main>\n")
 }
 
-func notePage(n *note, body string) []byte {
+// notePage is a note's page: its body with each block's comments after
+// the block, the orphans at the end, and the script that adds comments.
+func notePage(n *note, cs []*Comment, places []placed) []byte {
+	on := make(map[int][]int) // block -> its comments, in file order
+	var orphans []int
+	for i, p := range places {
+		if p.block < 0 {
+			orphans = append(orphans, i)
+		} else {
+			on[p.block] = append(on[p.block], i)
+		}
+	}
 	var b bytes.Buffer
-	b.Grow(len(body) + len(style) + 512)
+	b.Grow(len(n.body) + len(style) + len(commentStyle) + len(commentScript) + 300*len(cs) + 12*len(n.blocks) + 1024)
 	pageHead(&b, n.title)
+	b.WriteString(commentStyle)
 	b.WriteString(`<nav><a href="/">All notes</a> · <span class="date">`)
 	b.WriteString(n.modified.Format("2006-01-02"))
 	b.WriteString("</span></nav>\n<article>\n")
-	b.WriteString(body)
-	b.WriteString("</article>\n</main></body></html>\n")
+	at := 0
+	for k, blk := range n.blocks {
+		if len(on[k]) == 0 {
+			continue
+		}
+		b.WriteString(n.body[at:blk.End])
+		at = blk.End
+		fmt.Fprintf(&b, `<div class="cmts" data-for="%d">`, k)
+		for _, i := range on[k] {
+			writeComment(&b, cs[i], blk.norm != cs[i].Quote)
+		}
+		b.WriteString("</div>")
+	}
+	b.WriteString(n.body[at:])
+	b.WriteString("</article>\n")
+	if len(orphans) > 0 {
+		b.WriteString(`<section class="orphans"><h2>Comments on text that is gone</h2>` + "\n")
+		for _, i := range orphans {
+			writeComment(&b, cs[i], true)
+		}
+		b.WriteString("</section>\n")
+	}
+	// The blocks' fingerprints, for posting a comment: see postComment.
+	b.WriteString(`<script id="blocks" type="application/json">[`)
+	for k, blk := range n.blocks {
+		if k > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`"` + blk.hash + `"`)
+	}
+	b.WriteString("]</script>\n<script>const NOTE = ")
+	name, _ := json.Marshal(n.name)
+	b.Write(name)
+	b.WriteString(";</script>\n")
+	b.WriteString(commentScript)
+	b.WriteString("</main></body></html>\n")
 	return b.Bytes()
+}
+
+// writeComment writes one comment; was shows the text it was made on,
+// for a comment whose block has changed since or is gone.
+func writeComment(b *bytes.Buffer, c *Comment, was bool) {
+	b.WriteString(`<div class="cmt" id="c-` + html.EscapeString(c.ID) + `">`)
+	if was {
+		b.WriteString(`<details class="was"><summary>on an earlier version</summary><blockquote>`)
+		b.WriteString(html.EscapeString(c.Quote))
+		b.WriteString("</blockquote></details>")
+	}
+	b.WriteString(`<div class="who"><b>`)
+	b.WriteString(html.EscapeString(c.Name))
+	b.WriteString(`</b> <span class="date">`)
+	b.WriteString(html.EscapeString(strings.SplitN(c.Time, "T", 2)[0]))
+	b.WriteString(`</span></div><div class="said">`)
+	b.WriteString(html.EscapeString(c.Text))
+	b.WriteString("</div></div>")
 }
 
 func indexPage(list []*note) []byte {
@@ -235,15 +450,19 @@ func indexPage(list []*note) []byte {
 
 func main() {
 	dir := flag.String("notes", "notes", "the folder of .md notes")
+	comments := flag.String("comments", "", "the folder of comment files (default: comments beside the notes folder)")
 	addr := flag.String("addr", "127.0.0.1:9300", "the address to listen on")
 	flag.Parse()
-	s := newStore(*dir)
+	if *comments == "" {
+		*comments = filepath.Join(filepath.Dir(filepath.Clean(*dir)), "comments")
+	}
+	s := newStore(*dir, *comments)
 	start := time.Now()
 	list, err := s.all()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("rendered %d notes from %s in %s", len(list), *dir, time.Since(start).Round(time.Millisecond))
+	log.Printf("rendered %d notes from %s in %s; comments in %s", len(list), *dir, time.Since(start).Round(time.Millisecond), *comments)
 	log.Printf("listening on http://%s/", *addr)
 	log.Fatal(http.ListenAndServe(*addr, s.handler()))
 }
