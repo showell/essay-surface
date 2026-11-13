@@ -1,0 +1,88 @@
+-- bench.shale: build the server, start it on a folder of notes, and time
+-- real HTTP requests with curl's own clock (one curl, one kept-alive
+-- connection, so no process start is counted). Prints the start-up render
+-- time, then median, p90, p99 and max for the index and for every note.
+-- Leaves the server stopped.
+--   shale scripts/bench.shale                       (the sample notes)
+--   shale scripts/bench.shale dir=/abs/path/notes    (any folder; the server reads it)
+-- budget: steps=20000000
+local dir = arg("dir", "notes")
+local rounds = arg("rounds", 200)
+const BASE = "http://127.0.0.1:9300"
+
+-- curl's time_total is seconds with six decimals: "0.000412" is 412 us.
+function micros(s)
+  local parts = split(s, ".")
+  local frac = sub(parts[2] .. "000000", 1, 6)
+  return parse_int(parts[1]) * 1000000 + parse_int(frac)
+end
+
+function pct(sorted, p)
+  local i = (#sorted * p + 99) // 100
+  if i < 1 then i = 1 end
+  return sorted[i]
+end
+
+function show_us(us)
+  return (us // 1000) .. "." .. sub("" .. (1000 + us % 1000), 2, 4) .. " ms"
+end
+
+-- One curl over many URLs; gives {times, bytes, bad} from its -w lines.
+function timed(urls)
+  local argv = {"curl", "-s", "--max-time", "60"}
+  for u in urls do
+    push(argv, "-o")
+    push(argv, "/dev/null")
+    push(argv, "-w")
+    push(argv, "%{http_code} %{size_download} %{time_total}\\n")
+    push(argv, u)
+  end
+  local r = must(run(argv, {timeout_ms = 120000, whole = 4000000}))
+  local times = {}
+  local bytes = 0
+  local bad = 0
+  for l in lines(r.out) do
+    local w = words(l)
+    if #w == 3 then
+      if w[1] ~= "200" then bad = bad + 1 end
+      bytes = bytes + parse_int(w[2])
+      push(times, micros(w[3]))
+    end
+  end
+  sort(times)
+  return {times = times, bytes = bytes, bad = bad}
+end
+
+function report(label, t)
+  local s = t.times
+  print(label .. ": " .. #s .. " requests, " .. t.bad .. " not 200, " .. (t.bytes // #s) .. " bytes average; median " ..
+    show_us(pct(s, 50)) .. ", p90 " .. show_us(pct(s, 90)) .. ", p99 " .. show_us(pct(s, 99)) .. ", max " .. show_us(s[#s]))
+end
+
+must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
+mkdir(".run")
+local job = job_start({"./essay-surface", "-notes", dir}, {log = ".run/server.log", cwd = ".", want = "build: the server we just built"})
+local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
+if w.ended ~= "found" then
+  print(read(".run/server.log"))
+  job_stop(job)
+  fail("the server did not start: " .. w.ended)
+end
+print(lines(read(".run/server.log"))[1])
+
+-- The note names, from the index itself.
+local index = http_get(BASE .. "/").body
+local notes = {}
+for m in re_find_all(index, "href=\"(/notes/[^\"]+)\"") do push(notes, BASE .. m.group) end
+print(#notes .. " notes in the index")
+
+local idx_urls = {}
+for i = 1, rounds do push(idx_urls, BASE .. "/") end
+report("index", timed(idx_urls))
+report("notes", timed(notes))
+-- The biggest page, alone, many times.
+local big = {}
+for i = 1, rounds do push(big, BASE .. "/notes/gopher-roc-demo.md") end
+report("largest note", timed(big))
+job_stop(job)
+print("server stopped")

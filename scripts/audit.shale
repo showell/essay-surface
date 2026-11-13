@@ -1,0 +1,60 @@
+-- audit.shale: render every note through the real server and look for
+-- markdown left over outside code (**, ](, |---, a backtick): each is a
+-- construct the renderer missed. One curl fetches every page into
+-- .run/pages; the server is stopped before the pages are read.
+--   shale scripts/audit.shale                        (the sample notes)
+--   shale scripts/audit.shale dir=/abs/path/notes     (any folder)
+-- budget: steps=80000000
+local dir = arg("dir", "notes")
+
+-- s with every open...close stretch cut out, by split and find (builtins:
+-- re_replace runs in the prelude and costs a step a character).
+function cut(s, open, close)
+  local parts = split(s, open)
+  local out = {parts[1]}
+  for i = 2, #parts do
+    local e = find(parts[i], close)
+    if e ~= nil then push(out, sub(parts[i], e + #close, #parts[i])) end
+  end
+  return join(out, " ")
+end
+
+function audit(p)
+  local body = cut(cut(read(p), "<pre>", "</pre>"), "<code>", "</code>")
+  return {stars = #find_all(body, "**"), links = #find_all(body, "]("), tables = #find_all(body, "|---"), ticks = #find_all(body, "`")}
+end
+
+must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
+remove_tree(".run")
+mkdir(".run/pages")
+local job = job_start({"./essay-surface", "-notes", dir}, {log = ".run/server.log", cwd = ".", want = "build: the server we just built"})
+local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
+if w.ended ~= "found" then
+  job_stop(job)
+  fail("the server did not start: " .. w.ended)
+end
+local index = http_get("http://127.0.0.1:9300/").body
+local argv = {"curl", "-s", "--max-time", "60"}
+local names = {}
+for m in re_find_all(index, "href=\"/notes/([^\"]+)\"") do
+  push(names, m.group)
+  push(argv, "-o")
+  push(argv, ".run/pages/" .. m.group .. ".html")
+  push(argv, "http://127.0.0.1:9300/notes/" .. m.group)
+end
+local fetched = run(argv, {timeout_ms = 60000, tail = 5})
+job_stop(job)
+must(fetched)
+
+local rows = {}
+for n in names do
+  local a = audit(".run/pages/" .. n .. ".html")
+  if a.stars + a.links + a.tables + a.ticks > 0 then
+    a.note = n
+    push(rows, a)
+  end
+  yield()
+end
+sort(rows, "ticks", "desc")
+print(#names .. " pages, " .. #rows .. " with leftovers")
+if #rows > 0 then print(table(take(rows, 20), {"stars", "links", "tables", "ticks", "note"})) end

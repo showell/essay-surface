@@ -22,7 +22,7 @@ import (
 
 type note struct {
 	name     string
-	title    string
+	title    string // HTML-escaped text, no tags
 	modified time.Time
 	size     int64
 	page     []byte // the whole HTML page
@@ -59,9 +59,9 @@ func (s *store) get(name string, info os.FileInfo) (*note, error) {
 	}
 	n = &note{name: name, modified: info.ModTime(), size: info.Size()}
 	text := string(src)
-	n.title = Title(text)
+	n.title = TitleHTML(Title(text))
 	if n.title == "" {
-		n.title = strings.TrimSuffix(name, ".md")
+		n.title = html.EscapeString(strings.TrimSuffix(name, ".md"))
 	}
 	n.page = notePage(n, Render(text))
 	s.mu.Lock()
@@ -195,7 +195,7 @@ nav{font:.9rem system-ui,sans-serif;margin-bottom:1rem}
 func pageHead(b *bytes.Buffer, title string) {
 	b.WriteString("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>")
-	b.WriteString(html.EscapeString(title))
+	b.WriteString(title)
 	b.WriteString("</title>\n")
 	b.WriteString(style)
 	b.WriteString("\n</head><body><main>\n")
@@ -224,7 +224,7 @@ func indexPage(list []*note) []byte {
 		b.WriteString(`<li><a href="/notes/`)
 		b.WriteString(html.EscapeString(n.name))
 		b.WriteString(`">`)
-		b.WriteString(html.EscapeString(n.title))
+		b.WriteString(n.title)
 		b.WriteString(`</a><span class="date">`)
 		b.WriteString(n.modified.Format("2006-01-02"))
 		b.WriteString("</span></li>\n")

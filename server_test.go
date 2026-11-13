@@ -143,6 +143,26 @@ func BenchmarkIndex500(b *testing.B) {
 	}
 }
 
+// The index's two phases apart: listing and stat-ing the folder, and
+// writing the page.
+func BenchmarkIndexScan500(b *testing.B) {
+	s := newStore(benchDir(b, 500))
+	s.all()
+	b.ResetTimer()
+	for b.Loop() {
+		s.all()
+	}
+}
+
+func BenchmarkIndexPage500(b *testing.B) {
+	s := newStore(benchDir(b, 500))
+	list, _ := s.all()
+	b.ResetTimer()
+	for b.Loop() {
+		indexPage(list)
+	}
+}
+
 func BenchmarkNoteCached(b *testing.B) {
 	h := newStore(benchDir(b, 500)).handler()
 	get(b, h, "/")

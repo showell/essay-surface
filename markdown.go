@@ -43,6 +43,25 @@ func Title(src string) string {
 	return ""
 }
 
+// TitleHTML is a title's text for <title> and the index: its inline markup
+// rendered and the tags dropped, so `code` reads as code. Already escaped.
+func TitleHTML(title string) string {
+	h := inline(title)
+	var b strings.Builder
+	inTag := false
+	for k := 0; k < len(h); k++ {
+		switch {
+		case h[k] == '<':
+			inTag = true
+		case h[k] == '>' && inTag:
+			inTag = false
+		case !inTag:
+			b.WriteByte(h[k])
+		}
+	}
+	return b.String()
+}
+
 type renderer struct {
 	out        strings.Builder
 	slugs      map[string]int
@@ -338,7 +357,6 @@ func splitRow(line string) []string {
 	}
 	var cells []string
 	var cur strings.Builder
-	inCode := 0
 	for k := 0; k < len(s); k++ {
 		c := s[k]
 		switch {
@@ -346,18 +364,18 @@ func splitRow(line string) []string {
 			cur.WriteByte('|')
 			k++
 		case c == '`':
-			n := 1
-			for k+n < len(s) && s[k+n] == '`' {
-				n++
+			// A code span keeps its pipes; a run with no partner is text.
+			end := k
+			if _, e, ok := codeSpan(s, k); ok {
+				end = e
+			} else {
+				for end < len(s) && s[end] == '`' {
+					end++
+				}
 			}
-			if inCode == 0 {
-				inCode = n
-			} else if inCode == n {
-				inCode = 0
-			}
-			cur.WriteString(s[k : k+n])
-			k += n - 1
-		case c == '|' && inCode == 0:
+			cur.WriteString(s[k:end])
+			k = end - 1
+		case c == '|':
 			cells = append(cells, strings.TrimSpace(cur.String()))
 			cur.Reset()
 		default:

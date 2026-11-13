@@ -76,6 +76,9 @@ func TestRender(t *testing.T) {
 			"<div class=\"table-wrap\"><table>\n<thead><tr><th>a</th></tr></thead>\n<tbody>\n<tr><td>1</td></tr>\n</tbody></table></div>\n<p id=\"p1\">plain</p>\n"},
 		{"table escaped pipe", "| a |\n|---|\n| x \\| y |",
 			"<div class=\"table-wrap\"><table>\n<thead><tr><th>a</th></tr></thead>\n<tbody>\n<tr><td>x | y</td></tr>\n</tbody></table></div>\n"},
+		// From essay-surface-quality.md: an unpaired ``` once swallowed the row's later pipes.
+		{"an unpaired backtick run in a cell keeps the pipes after it", "| a | b |\n|---|---|\n| ```dot x | `c` |",
+			"<div class=\"table-wrap\"><table>\n<thead><tr><th>a</th><th>b</th></tr></thead>\n<tbody>\n<tr><td>```dot x</td><td><code>c</code></td></tr>\n</tbody></table></div>\n"},
 		{"pipes without a delimiter row are a paragraph", "a | b\nc | d", "<p id=\"p1\">a | b\nc | d</p>\n"},
 		{"a column count mismatch is not a table", "| a | b |\n|---|", "<p id=\"p1\">| a | b |\n|---|</p>\n"},
 		{"a table ends at a blank line", "| a |\n|---|\n| 1 |\n\nafter",
@@ -112,6 +115,19 @@ func TestTitle(t *testing.T) {
 	for in, want := range cases {
 		if got := Title(in); got != want {
 			t.Errorf("Title(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTitleHTML(t *testing.T) {
+	cases := map[string]string{
+		"Review: gopher-roc `app/DateTime.roc`": "Review: gopher-roc app/DateTime.roc",
+		"A <b> & *em* [link](x)":                "A &lt;b&gt; &amp; em link",
+		"plain":                                 "plain",
+	}
+	for in, want := range cases {
+		if got := TitleHTML(in); got != want {
+			t.Errorf("TitleHTML(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
