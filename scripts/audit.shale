@@ -42,6 +42,18 @@ function audit(p)
     blocks = #blocks, mismatch = marked - #blocks}
 end
 
+-- A known-bad page and a known-good one, read as every real page is: an
+-- audit that passes the bad one is blind, whatever the real pages say.
+local known_bad = audit("testdata/audit/bad.html")
+if known_bad.stars == 0 or known_bad.links == 0 or known_bad.tables == 0 or known_bad.ticks == 0 or known_bad.mismatch == 0 then
+  fail("the audit passes testdata/audit/bad.html: " .. json_write(known_bad))
+end
+local known_good = audit("testdata/audit/good.html")
+if known_good.stars + known_good.links + known_good.tables + known_good.ticks ~= 0 or known_good.mismatch ~= 0 then
+  fail("the audit refuses testdata/audit/good.html: " .. json_write(known_good))
+end
+print("fixtures: bad.html caught, good.html passed")
+
 essay_build()
 essay_fresh(RUN .. "/pages")
 local job = essay_start(dir, RUN .. "/comments", RUN .. "/server.log")
