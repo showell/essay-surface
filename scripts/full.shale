@@ -34,7 +34,7 @@ function stage(name, argv, opts, shown, failed)
   local own = {}
   for l in lines(r.out) do
     if starts_with(l, "── time:") then break end
-    if not starts_with(l, "── ") then push(own, l) end
+    if not starts_with(l, "── ") or starts_with(l, "── stopped") then push(own, l) end
   end
   for l in last(own, shown) do print("   " .. l) end
   return r

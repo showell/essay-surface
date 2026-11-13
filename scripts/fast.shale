@@ -7,17 +7,50 @@
 --   shale scripts/fast.shale
 -- Its last line is "fast: PASS", or a stop that names the stage.
 
+-- In go test -v's output, the failed top-level tests and what they said:
+-- each line goes with the test whose "=== RUN" came last before it, so a
+-- passing test's logs are left out. A panic is said whole.
+function failed_tests(out)
+  local logs = {}
+  local current = ""
+  local names = {}
+  local shown = {}
+  for l in lines(out) do
+    local run_m = re_find(l, "^=== RUN   (\\w+)")
+    local fail_m = re_find(l, "^--- FAIL: (\\w+)")
+    if run_m ~= nil then
+      current = run_m.group
+    elseif fail_m ~= nil then
+      push(names, fail_m.group)
+      for s in get(logs, fail_m.group, {}) do push(shown, s) end
+      push(shown, l)
+    elseif starts_with(l, "panic:") then
+      push(names, current .. " (panic)")
+      push(shown, l)
+      current = "panic"
+    elseif current == "panic" then
+      push(shown, l)
+    elseif current ~= "" and not starts_with(l, "=== ") and not starts_with(l, "    --- PASS") then
+      push_at(logs, current, l)
+    end
+  end
+  return {names = names, lines = shown}
+end
+
 -- One stage: its program run, its verdict, its times on one line.
 function stage(name, argv, opts)
   opts.timeout_ms = 120000
   opts.whole = 400000
   opts.stage = name
   local r = run(argv, opts)
-  if r.code ~= 0 then
+  if r.code == 0 then return r end
+  local failed = failed_tests(r.out)
+  if #failed.names == 0 then
     print(join(last(lines(r.out), 60), "\n"))
     fail(name .. ": " .. argv[1] .. " exited " .. r.code)
   end
-  return r
+  print(join(take(failed.lines, 60), "\n"))
+  fail(name .. ": " .. #failed.names .. " failed: " .. join(failed.names, ", "))
 end
 
 function said(name, r, what)
