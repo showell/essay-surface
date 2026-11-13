@@ -7,7 +7,6 @@ package main
 // else nowhere: an orphan, shown apart and never dropped.
 
 import (
-	"hash/fnv"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,14 +15,50 @@ import (
 
 // normalize is a block's text with every run of white space one space, so
 // rewrapping a paragraph changes nothing.
-func normalize(s string) string { return strings.Join(strings.Fields(s), " ") }
+// It is strings.Fields joined by spaces, in one pass: the words are copied
+// as spans, never split into a list.
+func normalize(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	start := -1 // where the current word began, or -1 between words
+	for i, r := range s {
+		if !unicode.IsSpace(r) {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			if b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			b.WriteString(s[start:i])
+			start = -1
+		}
+	}
+	if start >= 0 {
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(s[start:])
+	}
+	return b.String()
+}
 
 // blockHash is a short fingerprint of a block's normalized text: the page
 // carries it, and a new comment names its block by number and fingerprint.
-func blockHash(text string) string {
-	h := fnv.New64a()
-	h.Write([]byte(normalize(text)))
-	return strconv.FormatUint(h.Sum64()&0xffffffffff, 36)
+func blockHash(text string) string { return hashNormal(normalize(text)) }
+
+func hashNormal(norm string) string {
+	return strconv.FormatUint(hashOf(norm)&0xffffffffff, 36)
+}
+
+// fingerprint is a block's blockHash, from its index when it has one.
+func (b *Block) fingerprint() string {
+	if b.hash != "" {
+		return b.hash
+	}
+	return blockHash(b.Text)
 }
 
 // words is a text's words, lowercased: runs of letters and digits.
@@ -33,10 +68,14 @@ func words(s string) []string {
 	})
 }
 
+// hashOf is FNV-1a, 64 bits, over the string's bytes.
 func hashOf(s string) uint64 {
-	h := fnv.New64a()
-	h.Write([]byte(s))
-	return h.Sum64()
+	h := uint64(14695981039346656037)
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= 1099511628211
+	}
+	return h
 }
 
 // wordFeatures is a text's words and pairs of adjacent words, hashed and
@@ -147,24 +186,22 @@ func resolve(blocks []Block, cs []*Comment) []placed {
 	return out
 }
 
-// blockIndex finds blocks by text and by fingerprint.
+// blockIndex finds blocks by fingerprint.
 type blockIndex struct {
 	blocks []Block
-	byText map[string][]int
 	byHash map[string][]int
 }
 
 // indexBlocks fills in each block's normal form and fingerprint, where it
 // has none yet, and indexes them.
 func indexBlocks(blocks []Block) *blockIndex {
-	ix := &blockIndex{blocks, map[string][]int{}, map[string][]int{}}
+	ix := &blockIndex{blocks, make(map[string][]int, len(blocks))}
 	for k := range blocks {
 		b := &blocks[k]
 		if b.hash == "" {
 			b.norm = normalize(b.Text)
-			b.hash = blockHash(b.Text)
+			b.hash = hashNormal(b.norm)
 		}
-		ix.byText[b.norm] = append(ix.byText[b.norm], k)
 		ix.byHash[b.hash] = append(ix.byHash[b.hash], k)
 	}
 	return ix
@@ -184,7 +221,13 @@ func (ix *blockIndex) place(c *Comment) (placed, int) {
 	blocks := ix.blocks
 	// The same text: the nearest such block to where it was.
 	for _, t := range []string{normalize(c.anchorText()), normalize(c.Quote)} {
-		if at := ix.byText[t]; len(at) > 0 {
+		var at []int
+		for _, k := range ix.byHash[hashNormal(t)] {
+			if blocks[k].norm == t { // a fingerprint is 40 bits: confirm
+				at = append(at, k)
+			}
+		}
+		if len(at) > 0 {
 			return placed{nearest(at, c.Ord), exact}, 1000
 		}
 	}
@@ -254,17 +297,16 @@ func heal(c *Comment, blocks []Block, p placed) bool {
 	if p.block < 0 {
 		return false // an orphan keeps what it knew, in case the text comes back
 	}
-	text := normalize(blocks[p.block].Text)
-	anchor := text
+	anchor := normalize(blocks[p.block].Text)
 	if anchor == normalize(c.Quote) {
 		anchor = ""
 	}
 	prev, next := "", ""
 	if p.block > 0 {
-		prev = blockHash(blocks[p.block-1].Text)
+		prev = blocks[p.block-1].fingerprint()
 	}
 	if p.block+1 < len(blocks) {
-		next = blockHash(blocks[p.block+1].Text)
+		next = blocks[p.block+1].fingerprint()
 	}
 	if normalize(c.Anchor) == anchor && c.Prev == prev && c.Next == next {
 		return false

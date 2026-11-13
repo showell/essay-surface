@@ -51,6 +51,14 @@ func (r *renderer) open(text string) {
 	r.marked = append(r.marked, Block{Text: text})
 }
 
+// openLines is open for a block of several source lines, joined only when
+// the render is marked.
+func (r *renderer) openLines(lines []string) {
+	if r.mark {
+		r.open(strings.Join(lines, "\n"))
+	}
+}
+
 func (r *renderer) close() {
 	if r.mark {
 		r.marked[len(r.marked)-1].End = r.out.Len()
@@ -237,7 +245,7 @@ func (r *renderer) fence(lines []string, i int, ch byte, n, indent int, info str
 		i++ // the closer
 	}
 	r.out.WriteString("<pre")
-	r.open(strings.Join(body, "\n"))
+	r.openLines(body)
 	if lang != "" {
 		r.out.WriteString(`><code class="language-`)
 		r.out.WriteString(escapeAttr(lang))
@@ -484,7 +492,7 @@ func (r *renderer) table(lines []string, i int) int {
 		end++
 	}
 	r.out.WriteString(`<div class="table-wrap"`)
-	r.open(strings.Join(lines[start:end], "\n"))
+	r.openLines(lines[start:end])
 	r.out.WriteString("><table>\n<thead><tr>")
 	r.cells("th", header, aligns)
 	r.out.WriteString("</tr></thead>\n<tbody>\n")

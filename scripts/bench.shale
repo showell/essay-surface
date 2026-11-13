@@ -1,14 +1,22 @@
 -- bench.shale: build the server, start it on a folder of notes, and time
 -- real HTTP requests with curl's own clock (one curl, one kept-alive
--- connection, so no process start is counted). Prints the start-up render
--- time, then median, p90, p99 and max for the index and for every note.
--- Leaves the server stopped.
+-- connection, so no process start is counted). Times the index, every
+-- note, and the largest note; then posts comments (per= on every note,
+-- big= on the largest) and times the notes and the largest note again, so
+-- a page with comments is measured beside the same page without.
+-- Comments go to .run/bench/comments, made fresh each run: the bench never
+-- writes to a real comments folder. The server is stopped on every path
+-- but a budget's stop.
 --   shale scripts/bench.shale                       (the sample notes)
 --   shale scripts/bench.shale dir=/abs/path/notes    (any folder; the server reads it)
--- budget: steps=20000000
+-- budget: steps=60000000 reads=20000 kept_bytes=16000000
 local dir = arg("dir", "notes")
 local rounds = arg("rounds", 200)
+local per = arg("per", 3)
+local big_n = arg("big", 100)
 const BASE = "http://127.0.0.1:9300"
+const BIG = "gopher-roc-demo.md"
+const RUN = ".run/bench"
 
 -- curl's time_total is seconds with six decimals: "0.000412" is 412 us.
 function micros(s)
@@ -55,34 +63,106 @@ end
 
 function report(label, t)
   local s = t.times
-  print(label .. ": " .. #s .. " requests, " .. t.bad .. " not 200, " .. (t.bytes // #s) .. " bytes average; median " ..
-    show_us(pct(s, 50)) .. ", p90 " .. show_us(pct(s, 90)) .. ", p99 " .. show_us(pct(s, 99)) .. ", max " .. show_us(s[#s]))
+  return label .. ": " .. #s .. " requests, " .. t.bad .. " not 200, " .. (t.bytes // #s) .. " bytes average; median " ..
+    show_us(pct(s, 50)) .. ", p90 " .. show_us(pct(s, 90)) .. ", p99 " .. show_us(pct(s, 99)) .. ", max " .. show_us(s[#s])
+end
+
+function repeat_url(u, n)
+  local out = {}
+  for i = 1, n do push(out, u) end
+  return out
+end
+
+-- The block fingerprints a fetched page carries.
+function hashes_of(path)
+  return json_read(between(read(path), "<script id=\"blocks\" type=\"application/json\">", "</script>"))
+end
+
+-- One curl posting every comment; gives the count of 201s.
+function post_all(posts)
+  local argv = {"curl", "-s", "--max-time", "60"}
+  local first = true
+  for p in posts do
+    if not first then push(argv, "--next") end
+    first = false
+    for a in {"-o", "/dev/null", "-w", "%{http_code}\\n", "-H", "Content-Type: application/json", "--data-binary", p.body, p.url} do push(argv, a) end
+  end
+  local r = must(run(argv, {timeout_ms = 120000, whole = 200000}))
+  return #find_all(r.out, "201")
+end
+
+-- Comments on n blocks of a note, spread evenly, from its fetched page.
+function comments_for(name, page, n, posts)
+  local hs = hashes_of(page)
+  if #hs == 0 then return 0 end
+  for i = 0, n - 1 do
+    local k = i * #hs // n
+    push(posts, {url = BASE .. "/notes/" .. name .. "/comments",
+      body = json_write({block = k, hash = hs[k + 1], name = "Bench", text = "A comment of a sentence or two, about as long as a real one is, number " .. i .. "."})})
+  end
+  return n
+end
+
+-- Everything the server is up for. Its lines are returned, not printed,
+-- so the caller can stop the server before anything else.
+function measure(rounds, per, big_n)
+  local out = {}
+  local index = http_get(BASE .. "/").body
+  local names = {}
+  local notes = {}
+  for m in re_find_all(index, "href=\"/notes/([^\"]+)\"") do
+    push(names, m.group)
+    push(notes, BASE .. "/notes/" .. m.group)
+  end
+  push(out, #notes .. " notes in the index")
+  push(out, report("index", timed(repeat_url(BASE .. "/", rounds))))
+  -- A note's page is made on its first request; time the kept pages.
+  timed(notes)
+  push(out, report("notes, no comments", timed(notes)))
+  push(out, report("largest note, no comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds))))
+
+  -- Every page once, saved, for its fingerprints.
+  local argv = {"curl", "-s", "--max-time", "60"}
+  for n in names do
+    push(argv, "-o")
+    push(argv, RUN .. "/pages/" .. n)
+    push(argv, BASE .. "/notes/" .. n)
+  end
+  must(run(argv, {timeout_ms = 120000, tail = 5}))
+  local posts = {}
+  local wanted = 0
+  for n in names do
+    if n == BIG then
+      wanted = wanted + comments_for(n, RUN .. "/pages/" .. n, big_n, posts)
+    else
+      wanted = wanted + comments_for(n, RUN .. "/pages/" .. n, per, posts)
+    end
+    yield()
+  end
+  local made = post_all(posts)
+  push(out, "posted " .. made .. " comments of " .. wanted .. " (" .. per .. " a note, " .. big_n .. " on " .. BIG .. ")")
+  if made ~= wanted then fail("only " .. made .. " of " .. wanted .. " comments were taken") end
+  -- The first request for each page makes it with its comments; time the
+  -- kept pages after.
+  timed(notes)
+  push(out, report("notes, with comments", timed(notes)))
+  push(out, report("largest note, " .. big_n .. " comments", timed(repeat_url(BASE .. "/notes/" .. BIG, rounds))))
+  return out
 end
 
 must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
-mkdir(".run")
-local job = job_start({"./essay-surface", "-notes", dir}, {log = ".run/server.log", cwd = ".", want = "build: the server we just built"})
+if exists(RUN) then remove_tree(RUN) end
+mkdir(RUN .. "/pages")
+local job = job_start({"./essay-surface", "-notes", dir, "-comments", RUN .. "/comments"}, {log = RUN .. ".log", cwd = ".", want = "build: the server we just built"})
 local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
 if w.ended ~= "found" then
-  print(read(".run/server.log"))
+  print(read(RUN .. ".log"))
   job_stop(job)
   fail("the server did not start: " .. w.ended)
 end
-print(lines(read(".run/server.log"))[1])
-
--- The note names, from the index itself.
-local index = http_get(BASE .. "/").body
-local notes = {}
-for m in re_find_all(index, "href=\"(/notes/[^\"]+)\"") do push(notes, BASE .. m.group) end
-print(#notes .. " notes in the index")
-
-local idx_urls = {}
-for i = 1, rounds do push(idx_urls, BASE .. "/") end
-report("index", timed(idx_urls))
-report("notes", timed(notes))
--- The biggest page, alone, many times.
-local big = {}
-for i = 1, rounds do push(big, BASE .. "/notes/gopher-roc-demo.md") end
-report("largest note", timed(big))
+print(lines(read(RUN .. ".log"))[1])
+local result = attempt(measure, rounds, per, big_n)
 job_stop(job)
 print("server stopped")
+if not result.ok then fail("the bench stopped: " .. result.error .. " (line " .. result.line .. ")") end
+for l in result.value do print(l) end

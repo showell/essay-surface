@@ -1,6 +1,7 @@
 package main
 
 import (
+	"hash/fnv"
 	"strconv"
 	"strings"
 	"testing"
@@ -205,7 +206,7 @@ func TestAnchorEveryKindOfBlock(t *testing.T) {
 // changing, one edit at a time. Without it, the same chain orphans it.
 func TestAnchorChainOfEditsNeedsHealing(t *testing.T) {
 	v1 := "Intro here.\n\nShort one.\n\nOutro here.\n"
-	v2 := "Intro here.\n\nShort two.\n\nOutro here.\n"              // the block, in place
+	v2 := "Intro here.\n\nShort two.\n\nOutro here.\n"               // the block, in place
 	v3 := "Intro rewritten entirely.\n\nShort two.\n\nOutro here.\n" // a neighbor
 	v4 := "Intro rewritten entirely.\n\nBrief.\n\nOutro here.\n"     // the block again
 	healed := on(t, v1, "Short")
@@ -246,6 +247,24 @@ func TestHeal(t *testing.T) {
 	before := *c
 	if heal(c, bs, placed{-1, orphaned}) || *c != before {
 		t.Error("an orphan was healed")
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	for _, s := range []string{"", " ", "a", " a ", "a  b", "a\nb\tc", "\n\nx\r\ny  ", "a b", "é  ü", "a b ", "  lead", "trail  "} {
+		if got, want := normalize(s), strings.Join(strings.Fields(s), " "); got != want {
+			t.Errorf("normalize(%q) = %q, want %q", s, got, want)
+		}
+	}
+}
+
+func TestHashOfIsFNV1a(t *testing.T) {
+	for _, s := range []string{"", "a", "a paragraph of words", "é"} {
+		h := fnv.New64a()
+		h.Write([]byte(s))
+		if hashOf(s) != h.Sum64() {
+			t.Errorf("hashOf(%q) is not FNV-1a", s)
+		}
 	}
 }
 

@@ -175,9 +175,7 @@ func BenchmarkNoteCached(b *testing.B) {
 	}
 }
 
-// BenchmarkRenderLargest renders the biggest sample cold: the cost of the
-// first request after the note changes.
-func BenchmarkRenderLargest(b *testing.B) {
+func largestSample(b *testing.B) string {
 	paths, _ := filepath.Glob("notes/*.md")
 	var biggest []byte
 	for _, p := range paths {
@@ -186,9 +184,31 @@ func BenchmarkRenderLargest(b *testing.B) {
 			biggest = src
 		}
 	}
-	text := string(biggest)
 	b.SetBytes(int64(len(biggest)))
+	return string(biggest)
+}
+
+// BenchmarkRenderLargest renders the biggest sample cold: the cost of the
+// first request after the note changes.
+func BenchmarkRenderLargest(b *testing.B) {
+	text := largestSample(b)
 	for b.Loop() {
 		Render(text)
+	}
+}
+
+// The same with the blocks marked, and then indexed, as the server does.
+func BenchmarkRenderBlocksLargest(b *testing.B) {
+	text := largestSample(b)
+	for b.Loop() {
+		RenderBlocks(text)
+	}
+}
+
+func BenchmarkRenderIndexLargest(b *testing.B) {
+	text := largestSample(b)
+	for b.Loop() {
+		_, bs := RenderBlocks(text)
+		indexBlocks(bs)
 	}
 }
