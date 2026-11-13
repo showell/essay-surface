@@ -1,5 +1,6 @@
 -- check.shale: the gate before a commit. gofmt must list no file, vet must
--- be quiet, every test must pass. Prints each stage's verdict and time.
+-- be quiet, comments.js must parse, every test must pass. Prints each
+-- stage's verdict and time.
 -- Run from the repo root: shale scripts/check.shale
 local fmt = run({"gofmt", "-l", "."}, {timeout_ms = 30000, tail = 20})
 if fmt.out ~= "" then
@@ -10,6 +11,9 @@ end
 print("gofmt: clean")
 local vet = must(run({"go", "vet", "."}, {timeout_ms = 120000, tail = 30}))
 print("vet: clean, " .. vet.ms .. " ms")
+-- go test embeds comments.js but never parses it.
+must(run({"node", "--check", "comments.js"}, {timeout_ms = 30000, tail = 20, want = "check: the front end's syntax, which go test cannot see"}))
+print("js: comments.js parses")
 local test = run({"go", "test", "-count=1", "."}, {timeout_ms = 180000, tail = 60})
 if test.code ~= 0 then
   print(test.out)

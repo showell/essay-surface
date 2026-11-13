@@ -280,6 +280,33 @@ func TestConcurrentPosts(t *testing.T) {
 	}
 }
 
+// comments.js finds a block's thread as the element right after it. On
+// every kind of block, a comment's thread follows the block's closing tag.
+func TestThreadFollowsEveryKindOfBlock(t *testing.T) {
+	dir := t.TempDir()
+	md := "## A heading\n\n- an item\n- another\n  - nested\n\n1. loose\n\n2. items\n\n```go\ncode\n```\n\n| a |\n|---|\n| 1 |\n\n> quoted\n"
+	writeNote(t, dir, "k.md", md, time.Now())
+	h := testStore(dir).handler()
+	_, page := get(t, h, "/notes/k.md")
+	hs := hashesOf(t, page)
+	for k := range hs {
+		if code, body := post(t, h, "/notes/k.md/comments", "application/json", commentJSON(k, hs[k], "A", fmt.Sprintf("on %d", k))); code != 201 {
+			t.Fatalf("block %d: %d %s", k, code, body)
+		}
+	}
+	_, page = get(t, h, "/notes/k.md")
+	ends := []string{"</h2>", "</span>", "</span>", "</span>", "</p>", "</p>", "</pre>", "</div>", "</p>"}
+	if len(hs) != len(ends) {
+		t.Fatalf("%d blocks, want %d", len(hs), len(ends))
+	}
+	for k, end := range ends {
+		want := fmt.Sprintf(`%s<div class="cmts" data-for="%d">`, end, k)
+		if !strings.Contains(page, want) {
+			t.Errorf("block %d: no %q", k, want)
+		}
+	}
+}
+
 // The index carries no comment machinery.
 func TestIndexHasNoComments(t *testing.T) {
 	_, h, _ := setup(t)

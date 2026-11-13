@@ -1,0 +1,67 @@
+-- comments_smoke.shale: the comment flow through the real server, over
+-- HTTP. A note of its own in .run/smoke/notes, comments in
+-- .run/smoke/comments: post a comment, fix a typo in its paragraph and add
+-- one above it on disk while the server runs, then delete the paragraph.
+-- At each step the page and the comments file must say what they should.
+-- Everything the server is up for runs under attempt; the server is
+-- stopped before the verdict.
+--   shale scripts/comments_smoke.shale
+const BASE = "http://127.0.0.1:9300"
+const DIR = ".run/smoke"
+const NOTE = ".run/smoke/notes/smoke.md"
+const FILE = ".run/smoke/comments/smoke.md.jsonl"
+
+function page()
+  local r = http_get(BASE .. "/notes/smoke.md")
+  if r.status ~= 200 then fail("the page: " .. r.status) end
+  return r.body
+end
+
+function want(cond, what, out)
+  if not cond then fail("not so: " .. what) end
+  push(out, "ok: " .. what)
+end
+
+function flow()
+  local out = {}
+  local p = page()
+  local hs = json_read(between(p, "<script id=\"blocks\" type=\"application/json\">", "</script>"))
+  want(#hs == 4, "4 blocks: the title and three paragraphs", out)
+  local r = http("POST", BASE .. "/notes/smoke.md/comments", {headers = {"Content-Type: application/json"},
+    body = json_write({block = 2, hash = hs[3], name = "Smoke", text = "Is <this> claim & that one true?"})})
+  want(r.status == 201, "a comment is posted (201)", out)
+  p = page()
+  want(find(p, "the claim to argue.</p><div class=\"cmts\" data-for=\"2\">") ~= nil, "the comment follows its paragraph", out)
+  want(find(p, "Is &lt;this&gt; claim &amp; that one true?") ~= nil, "its text is escaped on the page", out)
+  want(find(read(FILE), "\"text\":\"Is <this> claim & that one true?\"") ~= nil, "the file keeps the text as written", out)
+
+  edit(NOTE, {{old = "the claim to argue.", new = "the claim to argeu."}, {old = "# Smoke\n", new = "# Smoke\n\nA paragraph added above.\n"}})
+  p = page()
+  want(find(p, "the claim to argeu.</p><div class=\"cmts\" data-for=\"3\">") ~= nil, "after a typo and a paragraph above, it follows", out)
+  want(find(p, "<summary>on an earlier version</summary>") ~= nil, "and says it was made on an earlier version", out)
+  want(find(read(FILE), "\"anchor\":\"Second paragraph, the claim to argeu.\"") ~= nil, "the file is healed to the new text", out)
+
+  edit(NOTE, "Second paragraph, the claim to argeu.\n\n", "")
+  p = page()
+  local o = find(p, "<section class=\"orphans\">")
+  want(o ~= nil and find(p, "Is &lt;this&gt;", o) ~= nil, "a deleted paragraph's comment is with the orphans", out)
+  want(#lines(read(FILE)) == 1, "and the file still has it", out)
+  return out
+end
+
+must(run({"go", "build", "-o", "essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
+if exists(DIR) then remove_tree(DIR) end
+mkdir(DIR .. "/notes")
+create(NOTE, "# Smoke\n\nFirst paragraph, the setting.\n\nSecond paragraph, the claim to argue.\n\nThird paragraph, the end.\n")
+local job = job_start({"./essay-surface", "-notes", DIR .. "/notes", "-comments", DIR .. "/comments"}, {log = DIR .. ".log", cwd = ".", want = "build: the server we just built"})
+local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
+if w.ended ~= "found" then
+  print(read(DIR .. ".log"))
+  job_stop(job)
+  fail("the server did not start: " .. w.ended)
+end
+local result = attempt(flow)
+job_stop(job)
+print("server stopped")
+if not result.ok then fail("the smoke test stopped: " .. result.error .. " (line " .. result.line .. ")") end
+for l in result.value do print(l) end
