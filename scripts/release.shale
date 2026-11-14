@@ -29,7 +29,7 @@
 -- Give the Bash call 300 s: the full check is most of a release's time,
 -- and a run killed from outside cannot put anything back. Nor can a run
 -- that stops on a budget, which attempt does not catch: the steps are set
--- at ten times a release's own, so the checks after the old server stops
+-- at about twenty times a release's own, so the checks after the old server stops
 -- never run out.
 -- budget: steps=50000000
 
