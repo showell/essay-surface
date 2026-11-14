@@ -38,8 +38,8 @@ local os_dir = dir
 if not starts_with(dir, "/") then os_dir = real(dir) end
 local top = trim(must(run({"git", "-C", os_dir, "rev-parse", "--show-toplevel"}, {timeout_ms = 10000, tail = 3})).out)
 local prefix = trim(must(run({"git", "-C", os_dir, "rev-parse", "--show-prefix"}, {timeout_ms = 10000, tail = 3})).out)
-local c = must(run({"git", "clone", "-q", top, RUN .. "/clone"}, {timeout_ms = 60000, tail = 10}))
-print("cloned " .. top .. " in " .. c.ms .. " ms")
+local clone = must(run({"git", "clone", "-q", top, RUN .. "/clone"}, {timeout_ms = 60000, tail = 10}))
+print("cloned " .. top .. " in " .. clone.ms .. " ms")
 local here = index_of(dir, "folder")
 local there = index_of(RUN .. "/clone/" .. prefix, "clone")
 print("folder: " .. here.said)
