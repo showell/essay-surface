@@ -48,8 +48,8 @@ function flow()
 
   edit(NOTE, "Second paragraph, the claim to argeu.\n\n", "")
   p = page()
-  local o = find(p, "<section class=\"orphans\">")
-  want(o ~= nil and find(p, "Is &lt;this&gt;", o) ~= nil, "a deleted paragraph's comment is with the orphans", out)
+  local orphans = find(p, "<section class=\"orphans\">")
+  want(orphans ~= nil and find(p, "Is &lt;this&gt;", orphans) ~= nil, "a deleted paragraph's comment is with the orphans", out)
   want(#lines(comments_file()) == 1, "and the file still has it", out)
   return out
 end
