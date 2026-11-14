@@ -1,8 +1,8 @@
--- full.shale: the check before anything ships, on the real notes. Every
+-- check_before_release.shale: the check before anything ships, on the real notes. Every
 -- stage runs, one after another (a timing never runs beside another
 -- stage), and the last line says plainly whether it is safe: "SAFE TO
 -- SHIP", or "NOT SAFE" and the stages that failed.
---   fast       scripts/fast.shale: gofmt, vet, the JS, the tests, the smoke
+--   commit     scripts/check_before_commit.shale: gofmt, vet, the JS, the tests, the smoke
 --   race       the tests under the race detector
 --   anchoring  the anchoring simulation on the real notes, held to its rates
 --   audit      scripts/audit.shale: every real note rendered, nothing left over
@@ -13,8 +13,8 @@
 -- Each stage has a CPU budget, several times its usual cost, so a stage
 -- gone slow fails here rather than passing slowly: that stop ends the
 -- check at once, naming the stage.
---   shale scripts/full.shale
---   shale scripts/full.shale dir=/abs/path/notes
+--   shale scripts/check_before_release.shale
+--   shale scripts/check_before_release.shale dir=/abs/path/notes
 -- The real notes are only read: the bench copies them first, and every
 -- server's comments go to a scratch folder under .run.
 local dir = arg("dir", "/home/steve/showell_repos/essay-repl-server/notes")
@@ -40,7 +40,7 @@ end
 local load = essay_load()
 print("box: load " .. load.said .. "; notes: " .. dir)
 local stages = {
-  {name = "fast", argv = {"shale", "scripts/fast.shale"}, opts = {cpu_budget_ms = 40000}, shown = 6},
+  {name = "commit", argv = {"shale", "scripts/check_before_commit.shale"}, opts = {cpu_budget_ms = 40000}, shown = 6},
   -- The simulation is pure and runs on one goroutine, and is ten times
   -- slower under -race; the anchoring stage runs it on the real notes.
   {name = "race", argv = {"go", "test", "-race", "-count=1", "-skip", "TestSimulateAnchoring", "."}, opts = {cpu_budget_ms = 40000}, shown = 2},

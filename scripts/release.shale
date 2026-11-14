@@ -3,7 +3,7 @@
 --   1. The checkout is clean, and exactly one server is running on the
 --      data folder, as `bin/essay-surface -notes <data>/notes -addr
 --      127.0.0.1:<port>`. Nothing is touched otherwise.
---   2. scripts/full.shale must end SAFE TO SHIP.
+--   2. scripts/check_before_release.shale must end SAFE TO SHIP.
 --   3. The new server is built beside the old, as bin/essay-surface.new,
 --      with its .note renderer as bin/render-note.new, which must render
 --      the demo note. From here on the renderer moves with its server.
@@ -355,7 +355,7 @@ end
 
 if not t.rollback then
   -- 2: the full check.
-  local full = run({"shale", "scripts/full.shale"}, {cwd = t.repo, timeout_ms = 240000, tail = 200})
+  local full = run({"shale", "scripts/check_before_release.shale"}, {cwd = t.repo, timeout_ms = 240000, tail = 200})
   local safe = false
   for l in lines(full.out) do
     if starts_with(l, "== ") or starts_with(l, "NOT SAFE") then print("   " .. l) end
@@ -363,7 +363,7 @@ if not t.rollback then
   end
   if full.code ~= 0 or not safe then
     print(join(last(lines(full.out), 15), "\n"))
-    fail("full.shale did not say SAFE TO SHIP (exit " .. full.code .. "): nothing touched")
+    fail("check_before_release.shale did not say SAFE TO SHIP (exit " .. full.code .. "): nothing touched")
   end
   print("full check: SAFE TO SHIP, " .. full.ms .. " ms")
   -- 3: the build, beside the old binary.

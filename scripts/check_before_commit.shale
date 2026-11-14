@@ -1,11 +1,11 @@
--- fast.shale: the check for every edit, a few seconds. gofmt, vet, the
+-- check_before_commit.shale: the check for every edit, a few seconds. gofmt, vet, the
 -- front end's syntax, every Go test on the sample notes, the comment
 -- flow through the real server, and the .note path from its Roc to its
 -- page (note_check.shale). It stops at the first stage that fails.
 -- Each stage is held to a CPU budget, which a busy box does not break as
 -- it does wall time; a budget is several times the stage's usual cost, so
 -- only a real slowdown passes it.
---   shale scripts/fast.shale
+--   shale scripts/check_before_commit.shale
 -- Its last line is "fast: PASS", or a stop that names the stage.
 
 -- In go test -v's output, the failed top-level tests and what they said:
