@@ -6,7 +6,7 @@
 -- it does wall time; a budget is several times the stage's usual cost, so
 -- only a real slowdown passes it.
 --   shale scripts/check_before_commit.shale
--- Its last line is "fast: PASS", or a stop that names the stage.
+-- Its last line is "check before commit: PASS", or a stop that names the stage.
 
 -- In go test -v's output, the failed top-level tests and what they said:
 -- each line goes with the test whose "=== RUN" came last before it, so a
@@ -66,7 +66,7 @@ local keeps_failing_log = find(known_said, "what the failing test said") ~= nil
 local drops_passing_log = find(known_said, "never shown") == nil
 local keeps_panic_trace = find(known_said, "c_test.go:30") ~= nil
 if not (names_both and keeps_failing_log and drops_passing_log and keeps_panic_trace) then
-  fail("fast's reader of go test misreads testdata/fast/go-test-v.txt: " .. json_write(known))
+  fail("the commit check's reader of go test misreads testdata/fast/go-test-v.txt: " .. json_write(known))
 end
 
 local fmt = stage("gofmt", {"gofmt", "-l", "."}, {cpu_budget_ms = 5000})
@@ -86,4 +86,4 @@ local smoke = stage("smoke", {"shale", "scripts/comments_smoke.shale"}, {cpu_bud
 said("smoke", smoke, ": " .. #re_lines(smoke.out, "^ok: ") .. " checks through the real server")
 local note = stage("note", {"shale", "scripts/note_check.shale"}, {cpu_budget_ms = 30000})
 said("note", note, ": " .. #re_lines(note.out, "^ok: ") .. " checks, from the Roc to the page")
-print("fast: PASS")
+print("check before commit: PASS")
