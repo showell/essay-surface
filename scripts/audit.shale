@@ -20,8 +20,8 @@ const RUN = ".run/audit"
 -- whose count changes is looked at again.
 const FAITHFUL_TICKS = [=[{"essay-surface-monday.md": 3, "essay-surface-quality.md": 3, "update-53-and-the-checklists-first-day.md": 2}]=]
 
--- s with every open...close stretch cut out, by split and find (builtins:
--- re_replace runs in the prelude and costs a step a character).
+-- s with every open...close stretch cut out, by split and find, which scan
+-- the text, where a regex pays its pattern's states at each byte it examines.
 function cut(s, open, close)
   local parts = split(s, open)
   local out = {parts[1]}
