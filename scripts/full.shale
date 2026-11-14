@@ -19,40 +19,43 @@
 -- server's comments go to a scratch folder under .run.
 local dir = arg("dir", "/home/steve/showell_repos/essay-repl-server/notes")
 
--- One stage: its program, its verdict and times, and its last lines.
-function stage(name, argv, opts, shown, failed)
-  opts.timeout_ms = 110000
-  opts.tail = 400
-  opts.stage = name
-  local r = run(argv, opts)
+-- One stage run: its verdict and times, and the last s.shown lines of its
+-- own output. Gives "PASS" or "FAIL".
+function stage(s)
+  local run_opts = {timeout_ms = 110000, tail = 400, stage = s.name}
+  for k in keys(s.opts) do run_opts[k] = s.opts[k] end
+  local r = run(s.argv, run_opts)
   local verdict = "PASS"
-  if r.code ~= 0 then
-    verdict = "FAIL"
-    push(failed, name)
-  end
-  print("== " .. name .. ": " .. verdict .. ", " .. r.ms .. " ms, cpu " .. r.cpu_ms .. " ms")
+  if r.code ~= 0 then verdict = "FAIL" end
+  print("== " .. s.name .. ": " .. verdict .. ", " .. r.ms .. " ms, cpu " .. r.cpu_ms .. " ms")
   local own = {}
   for l in lines(r.out) do
     if starts_with(l, "── time:") then break end
     if not starts_with(l, "── ") or starts_with(l, "── stopped") then push(own, l) end
   end
-  for l in last(own, shown) do print("   " .. l) end
-  return r
+  for l in last(own, s.shown) do print("   " .. l) end
+  return verdict
 end
 
 local load = essay_load()
 print("box: load " .. load.said .. "; notes: " .. dir)
+local stages = {
+  {name = "fast", argv = {"shale", "scripts/fast.shale"}, opts = {cpu_budget_ms = 40000}, shown = 6},
+  -- The simulation is pure and runs on one goroutine, and is ten times
+  -- slower under -race; the anchoring stage runs it on the real notes.
+  {name = "race", argv = {"go", "test", "-race", "-count=1", "-skip", "TestSimulateAnchoring", "."}, opts = {cpu_budget_ms = 40000}, shown = 2},
+  -- About 15 s of CPU: 187,000 simulated edits, most of it the similarity
+  -- search for the blocks that were moved, merged or deleted.
+  {name = "anchoring", argv = {"go", "test", "-count=1", "-run", "TestSimulateAnchoring", "-v", "."},
+    opts = {cpu_budget_ms = 45000, env = {ESSAY_NOTES = dir}, re = "cases|->|--- |^ok|^FAIL|_test.go"}, shown = 17},
+  {name = "audit", argv = {"shale", "scripts/audit.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 6},
+  {name = "dates", argv = {"shale", "scripts/dates.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 4},
+  {name = "bench", argv = {"shale", "scripts/bench.shale", "dir=" .. dir, "rounds=500"}, opts = {cpu_budget_ms = 40000}, shown = 6},
+}
 local failed = {}
-stage("fast", {"shale", "scripts/fast.shale"}, {cpu_budget_ms = 40000}, 6, failed)
--- The simulation is pure and runs on one goroutine, and is ten times
--- slower under -race; the anchoring stage runs it on the real notes.
-stage("race", {"go", "test", "-race", "-count=1", "-skip", "TestSimulateAnchoring", "."}, {cpu_budget_ms = 40000}, 2, failed)
--- About 15 s of CPU: 187,000 simulated edits, most of it the similarity
--- search for the blocks that were moved, merged or deleted.
-stage("anchoring", {"go", "test", "-count=1", "-run", "TestSimulateAnchoring", "-v", "."}, {cpu_budget_ms = 45000, env = {ESSAY_NOTES = dir}, re = "cases|->|--- |^ok|^FAIL|_test.go"}, 17, failed)
-stage("audit", {"shale", "scripts/audit.shale", "dir=" .. dir}, {cpu_budget_ms = 20000}, 6, failed)
-stage("dates", {"shale", "scripts/dates.shale", "dir=" .. dir}, {cpu_budget_ms = 20000}, 4, failed)
-stage("bench", {"shale", "scripts/bench.shale", "dir=" .. dir, "rounds=500"}, {cpu_budget_ms = 40000}, 6, failed)
+for s in stages do
+  if stage(s) == "FAIL" then push(failed, s.name) end
+end
 
 print("by hand still: an eye test of a note and its comments in a desktop browser")
 if #failed > 0 then
