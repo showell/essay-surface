@@ -1,13 +1,13 @@
--- audit.shale: every note rendered through the real server, each page
--- checked for markdown left over outside code (**, ](, |---, a backtick),
+-- This script renders every note through the real server and checks each
+-- page for markdown left over outside code (**, ](, |---, a backtick),
 -- which is a construct the renderer missed, and for its comment markup: as
 -- many data-c blocks as fingerprints in #blocks. One curl fetches every
 -- page into .run/audit/pages; the server is stopped before they are read.
 -- Its comments folder is .run/audit/comments, so a real one is never read
 -- or written.
---   shale scripts/audit.shale                        (the sample notes)
---   shale scripts/audit.shale dir=/abs/path/notes     (any folder)
--- Its last line is "audit: PASS", or a stop that says what was found.
+--   shale scripts/check_rendered_notes.shale                        (the sample notes)
+--   shale scripts/check_rendered_notes.shale dir=/abs/path/notes     (any folder)
+-- Its last line is "check_rendered_notes: PASS", or a stop that says what was found.
 -- Budgets: each page is cut four times and its fingerprints parsed (about
 -- 170k steps a page), and the fetch's argv and the index are kept across
 -- each yield.
@@ -100,4 +100,4 @@ if #unexplained > 0 then
   for a in take(unexplained, 10) do push(which, a.note .. " (" .. a.ticks .. " ticks)") end
   fail(#unexplained .. " pages with leftovers not known to be faithful: " .. join(which, ", "))
 end
-print("audit: PASS")
+print("check_rendered_notes: PASS")

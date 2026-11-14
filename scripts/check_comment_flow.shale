@@ -1,11 +1,11 @@
--- comments_smoke.shale: the comment flow through the real server, over
+-- This script checks the comment flow through the real server, over
 -- HTTP. A note of its own in .run/smoke/notes, comments in
 -- .run/smoke/comments: post a comment, fix a typo in its paragraph and add
 -- one above it on disk while the server runs, then delete the paragraph.
 -- At each step the page and the comments file must say what they should.
 -- Everything the server is up for runs under attempt; the server is
 -- stopped before the verdict.
---   shale scripts/comments_smoke.shale
+--   shale scripts/check_comment_flow.shale
 const DIR = ".run/smoke"
 const NOTE = ".run/smoke/notes/smoke.md"
 const FILE = ".run/smoke/comments/smoke.md.jsonl"

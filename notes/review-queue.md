@@ -200,7 +200,7 @@ Found by the rider-step lane: `RiderState.next` from 299.9 m on the last segment
 
 ## name_hunt's preposition convention is fragile (2026-11-07)
 
-Twice today, removing names in one module flipped `preposition_split` somewhere unrelated. Deleting TowerSighting's `brightness_at` (a test helper) dropped the `_at` convention under 3 stems and flagged three pairs. Removing HexColor's `red_of`/`green_of`/`blue_of` dropped the `_of` convention and flagged CME's `road_of`/`road_from`, now renamed `crafted_road`/`world_road_at`. A rule whose verdict on file A depends on names in unrelated file B is a judge that moves on its own. Look at cookbook/roc/name_hunt.shale's CONVENTION_STEMS: count per module, exclude test helpers, or drop the convention exemption and fix the names it then flags. A shale cookbook lane.
+Twice today, removing names in one module flipped `preposition_split` somewhere unrelated. Deleting TowerSighting's `brightness_at` (a test helper) dropped the `_at` convention under 3 stems and flagged three pairs. Removing HexColor's `red_of`/`green_of`/`blue_of` dropped the `_of` convention and flagged CME's `road_of`/`road_from`, now renamed `crafted_road`/`world_road_at`. A rule whose verdict on file A depends on names in unrelated file B is a judge that moves on its own. Look at cookbook/roc/hunt_names.shale's CONVENTION_STEMS: count per module, exclude test helpers, or drop the convention exemption and fix the names it then flags. A shale cookbook lane.
 
 ## Small follow-ups (2026-11-07)
 
@@ -490,7 +490,7 @@ Possible upstream finding: Roc accepts `import sub.Foo` in an app with no packag
 - Each held frame says what it's there to catch. A frame with nothing to look for goes ("we can be somewhat ruthless with tests"). One mid-ride frame is fine if it's named.
 - Smells guide, structure: how to judge a split. No rule, only judgment. Mostly it's whether the code changes for its own reasons (the sky's colors are tuned apart from the sun); a distinct noun helps too. Tiny modules tend to grow.
 
-## Boundary hints (the recipe is merged: `cookbook:roc/boundary_hints.shale`)
+## Boundary hints (the recipe is merged: `cookbook:roc/rank_boundary_hints.shale`)
 
 On Safari it gave 143 "fed to one" hints (19 drawn with in the using function) and 44 borrowed nouns. The top ten, decided:
 

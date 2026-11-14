@@ -15,7 +15,7 @@ import (
 // how: "echo" prints a page of one paragraph holding the arguments joined,
 // as render-note joins them; "fail" exits 1 saying why; "junk" prints what
 // isn't a page. The real renderer is tested by format/'s expects and run
-// through the server by scripts/note_check.shale.
+// through the server by scripts/check_note_format.shale.
 func TestMain(m *testing.M) {
 	switch os.Getenv("ESSAY_FAKE_RENDERER") {
 	case "":

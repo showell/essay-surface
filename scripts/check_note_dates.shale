@@ -1,12 +1,12 @@
--- dates.shale: a note's date must not come from its file's time, which a
--- fresh clone resets. The folder's repository is cloned into .run/dates
+-- This script checks that a note's date never comes from its file's time,
+-- which a fresh clone resets. The folder's repository is cloned into .run/dates
 -- (every file there gets the clone's time), and the index of the clone
 -- must give every note the same date, in the same order, as the index of
 -- the folder itself. A note not committed yet is in the folder alone, and
 -- is counted, not compared.
---   shale scripts/dates.shale                       (the sample notes)
---   shale scripts/dates.shale dir=/abs/path/notes    (a folder in a git repository)
--- Its last line is "dates: PASS", or a stop that names a note.
+--   shale scripts/check_note_dates.shale                       (the sample notes)
+--   shale scripts/check_note_dates.shale dir=/abs/path/notes    (a folder in a git repository)
+-- Its last line is "check_note_dates: PASS", or a stop that names a note.
 -- Budget: re_find_all runs in the prelude, about 2.5 million steps an
 -- index page of 500 notes.
 -- budget: steps=30000000
@@ -64,4 +64,4 @@ for row in there.rows do
 end
 if i <= #order then fail("the clone's index has another order, from " .. order[i]) end
 print(#order .. " notes with the same date in the same place; " .. uncommitted .. " in the folder alone, not committed yet")
-print("dates: PASS")
+print("check_note_dates: PASS")

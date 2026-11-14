@@ -3,8 +3,8 @@
 -- source line by line, as markdown.go does, so a fence's lines are code and
 -- count only as a fence. The counts are for deciding what a new note format
 -- keeps; a feature the renderer does not support is counted all the same.
---   shale scripts/features.shale dir=repos:essay-repl-server/notes
---   shale scripts/features.shale dir=notes show=indented_code
+--   shale scripts/count_markdown_features.shale dir=repos:essay-repl-server/notes
+--   shale scripts/count_markdown_features.shale dir=notes show=indented_code
 -- `show=` names one feature and prints every place it appears.
 -- budget: steps=400000000 arena_bytes=400000000
 

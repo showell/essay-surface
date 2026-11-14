@@ -5,9 +5,9 @@
 --   commit     scripts/check_before_commit.shale: gofmt, vet, the JS, the tests, the smoke
 --   race       the tests under the race detector
 --   anchoring  the anchoring simulation on the real notes, held to its rates
---   audit      scripts/audit.shale: every real note rendered, nothing left over
---   dates      scripts/dates.shale: a fresh clone gives the same index
---   bench      scripts/bench.shale on a copy of the real notes: CPU a request
+--   audit      scripts/check_rendered_notes.shale: every real note rendered, nothing left over
+--   dates      scripts/check_note_dates.shale: a fresh clone gives the same index
+--   bench      scripts/measure_server.shale on a copy of the real notes: CPU a request
 --              held to budgets a busy box cannot break; wall times judged
 --              only when the box is quiet
 -- Each stage has a CPU budget, several times its usual cost, so a stage
@@ -48,9 +48,9 @@ local stages = {
   -- search for the blocks that were moved, merged or deleted.
   {name = "anchoring", argv = {"go", "test", "-count=1", "-run", "TestSimulateAnchoring", "-v", "."},
     opts = {cpu_budget_ms = 45000, env = {ESSAY_NOTES = dir}, re = "cases|->|--- |^ok|^FAIL|_test.go"}, shown = 17},
-  {name = "audit", argv = {"shale", "scripts/audit.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 6},
-  {name = "dates", argv = {"shale", "scripts/dates.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 4},
-  {name = "bench", argv = {"shale", "scripts/bench.shale", "dir=" .. dir, "rounds=500"}, opts = {cpu_budget_ms = 40000}, shown = 6},
+  {name = "audit", argv = {"shale", "scripts/check_rendered_notes.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 6},
+  {name = "dates", argv = {"shale", "scripts/check_note_dates.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 4},
+  {name = "bench", argv = {"shale", "scripts/measure_server.shale", "dir=" .. dir, "rounds=500"}, opts = {cpu_budget_ms = 40000}, shown = 6},
 }
 local failed = {}
 for s in stages do

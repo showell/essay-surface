@@ -1,4 +1,4 @@
--- bench.shale: the server timed on a copy of a folder of notes, by real
+-- This script times the server on a copy of a folder of notes, by real
 -- HTTP requests on curl's own clock (one curl, one kept-alive connection,
 -- so no process start is counted). It times the index, every note, and
 -- the largest note; then posts comments (per= on every note, big= on the
@@ -16,9 +16,9 @@
 -- The notes are copied to .run/bench/notes and the comments go to
 -- .run/bench/comments, made fresh each run: the bench reads the folder
 -- once and never writes to it.
---   shale scripts/bench.shale                       (the sample notes)
---   shale scripts/bench.shale dir=/abs/path/notes    (any folder)
--- Its last line is "bench: PASS", or a stop that says which budget broke.
+--   shale scripts/measure_server.shale                       (the sample notes)
+--   shale scripts/measure_server.shale dir=/abs/path/notes    (any folder)
+-- Its last line is "measure_server: PASS", or a stop that says which budget broke.
 -- budget: steps=60000000 reads=20000 kept_bytes=16000000
 local dir = arg("dir", "notes")
 local rounds = arg("rounds", 200)
@@ -231,4 +231,4 @@ else
   if #over > 0 then fail("latency: " .. join(over, "; ")) end
   print("latency: every median within budget (load " .. before.said .. " before, " .. after.said .. " after): PASS")
 end
-print("bench: PASS")
+print("measure_server: PASS")

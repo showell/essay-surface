@@ -1,4 +1,4 @@
--- note_check.shale: the .note path end to end. The Roc in format/ formatted,
+-- This script checks the .note path end to end. The Roc in format/ formatted,
 -- checked with no errors and no warnings, and its expects run, every one of
 -- them; render-note built from it; every note in notes/ rendered, and each
 -- of its diagrams drawn by the page's own viz.js under node; then the real
@@ -7,8 +7,8 @@
 -- edited on disk under them, a link by name, and the broken note failing
 -- alone. Everything the server is up for runs under attempt; the server is
 -- stopped before the verdict.
---   shale scripts/note_check.shale
--- Its last line is "note: PASS".
+--   shale scripts/check_note_format.shale
+-- Its last line is "check_note_format: PASS".
 const DIR = ".run/note"
 const DEMO = "format-demo.note"
 
@@ -168,4 +168,4 @@ essay_stop(job, DIR .. "/server.log")
 print("server stopped")
 if not result.ok then fail("the flow stopped: " .. result.error .. " (line " .. result.line .. ")") end
 for l in result.value do print(l) end
-print("note: PASS")
+print("check_note_format: PASS")
