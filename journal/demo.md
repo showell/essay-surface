@@ -154,3 +154,7 @@ The orchestrator, not the agent, shipped it. Two things blocked it.
 - **The full check's audit was red** on an essay note with a bare code fence in a sentence. The fix was the sentence, not an entry in the audit's list of faithful pages.
 
 Released to the dogfood surface as 8deea74, with 17 comments where they were. The demo note was then copied in for the first eye test.
+
+## Steve's eye test
+
+After the release, Steve opened the demo on his surface: "Session 9 looks good, to be clear! It's on track." The same evening, after a day of using the new surface in place of the old one: "The dogfooding is working! I barely notice that I'm using an 'in progress' product now."
