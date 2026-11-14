@@ -1,0 +1,74 @@
+URLs and near-URLs that must not become links, or not new ones: code,
+markdown's own links, other schemes, and a scheme with no host. The format
+is link.txt's.
+
+~~ case: inline code
+use `https://x.org` here
+~~ want
+<p id="p1">use <code>https://x.org</code> here</p>
+~~ case: a fence
+```
+curl https://x.org/a
+```
+~~ want
+<pre><code>curl https://x.org/a
+</code></pre>
+~~ case: a fence with a language
+```sh
+curl http://143.244.172.148:9210/
+```
+~~ want
+<pre><code class="language-sh">curl http://143.244.172.148:9210/
+</code></pre>
+~~ case: a markdown link is as it was
+see [the docs](https://x.org/a) now
+~~ want
+<p id="p1">see <a href="https://x.org/a">the docs</a> now</p>
+~~ case: a markdown link whose text is its URL is one link
+[https://x.org](https://x.org)
+~~ want
+<p id="p1"><a href="https://x.org">https://x.org</a></p>
+~~ case: a URL in a link's text stays its text
+[see https://a.org/"<b>](https://b.org)
+~~ want
+<p id="p1"><a href="https://b.org">see https://a.org/&quot;&lt;b&gt;</a></p>
+~~ case: an angle-bracket link is as it was
+<https://x.org>
+~~ want
+<p id="p1"><a href="https://x.org">https://x.org</a></p>
+~~ case: an image is as it was
+![https://x.org/a.png](https://x.org/a.png)
+~~ want
+<p id="p1"><img src="https://x.org/a.png" alt="https://x.org/a.png"></p>
+~~ case: inside a word
+xhttps://x.org and 2http://x.org
+~~ want
+<p id="p1">xhttps://x.org and 2http://x.org</p>
+~~ case: other schemes
+ftp://x.org mailto:a@x.org file:///etc/hosts www.x.org
+~~ want
+<p id="p1">ftp://x.org mailto:a@x.org file:///etc/hosts www.x.org</p>
+~~ case: a scheme alone
+http:// and https://.
+~~ want
+<p id="p1">http:// and https://.</p>
+~~ case: no host after the scheme
+https:///path and https://-x and https://_x
+~~ want
+<p id="p1">https:///path and https://-x and https://_x</p>
+~~ case: a placeholder for the host
+http://<box>:9200/safari/
+~~ want
+<p id="p1">http://&lt;box&gt;:9200/safari/</p>
+~~ case: a scheme in capitals
+HTTPS://X.ORG
+~~ want
+<p id="p1">HTTPS://X.ORG</p>
+~~ case: an HTML block passes through as written
+<div>
+https://x.org
+</div>
+~~ want
+<div>
+https://x.org
+</div>

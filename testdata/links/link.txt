@@ -1,0 +1,82 @@
+Bare URLs that must become links. TestBareURLs reads every file in this
+folder. A case starts at a "~~ case: <name>" line; the note's markdown runs
+to "~~ want", and the HTML it must render runs to the next case. Anything
+before the first case is this header. Each case renders alone, so its
+first paragraph is p1.
+
+~~ case: in a sentence
+see https://x.org now
+~~ want
+<p id="p1">see <a href="https://x.org">https://x.org</a> now</p>
+~~ case: http, an address and a port
+http://143.244.172.148:9210/tutorial/
+~~ want
+<p id="p1"><a href="http://143.244.172.148:9210/tutorial/">http://143.244.172.148:9210/tutorial/</a></p>
+~~ case: a path, a query and a fragment
+https://x.org/a/b.html?c=1&d=2#top
+~~ want
+<p id="p1"><a href="https://x.org/a/b.html?c=1&amp;d=2#top">https://x.org/a/b.html?c=1&amp;d=2#top</a></p>
+~~ case: underscores and stars inside it are not emphasis
+https://x.org/snake_case_name/a*b*c
+~~ want
+<p id="p1"><a href="https://x.org/snake_case_name/a*b*c">https://x.org/snake_case_name/a*b*c</a></p>
+~~ case: two in a line
+https://a.org and https://b.org
+~~ want
+<p id="p1"><a href="https://a.org">https://a.org</a> and <a href="https://b.org">https://b.org</a></p>
+~~ case: at the start of a paragraph's second line
+first line
+https://x.org/two
+~~ want
+<p id="p1">first line
+<a href="https://x.org/two">https://x.org/two</a></p>
+~~ case: after an equals sign
+url=https://x.org
+~~ want
+<p id="p1">url=<a href="https://x.org">https://x.org</a></p>
+~~ case: letters past ASCII in its path
+https://ja.wikipedia.org/wiki/日本語 here
+~~ want
+<p id="p1"><a href="https://ja.wikipedia.org/wiki/日本語">https://ja.wikipedia.org/wiki/日本語</a> here</p>
+~~ case: in strong
+**https://x.org**
+~~ want
+<p id="p1"><strong><a href="https://x.org">https://x.org</a></strong></p>
+~~ case: in emphasis, an underscore inside
+*https://x.org/a_b*
+~~ want
+<p id="p1"><em><a href="https://x.org/a_b">https://x.org/a_b</a></em></p>
+~~ case: in underscore emphasis
+_https://x.org/a_b_
+~~ want
+<p id="p1"><em><a href="https://x.org/a_b">https://x.org/a_b</a></em></p>
+~~ case: in a list item
+- https://x.org
+~~ want
+<ul>
+<li><a href="https://x.org">https://x.org</a></li>
+</ul>
+~~ case: in a heading
+## See https://x.org
+~~ want
+<h2 id="see-httpsxorg">See <a href="https://x.org">https://x.org</a></h2>
+~~ case: in a table cell
+| a |
+|---|
+| https://x.org |
+~~ want
+<div class="table-wrap"><table>
+<thead><tr><th>a</th></tr></thead>
+<tbody>
+<tr><td><a href="https://x.org">https://x.org</a></td></tr>
+</tbody></table></div>
+~~ case: in a quote
+> https://x.org
+~~ want
+<blockquote>
+<p id="p1"><a href="https://x.org">https://x.org</a></p>
+</blockquote>
+~~ case: beside a markdown link
+[a](https://a.org) and https://b.org
+~~ want
+<p id="p1"><a href="https://a.org">a</a> and <a href="https://b.org">https://b.org</a></p>

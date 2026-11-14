@@ -1,0 +1,47 @@
+Notes that try to put markup into a page through a bare URL. Besides the
+exact HTML, TestBareURLsEscaped holds each to this: no tag but the
+renderer's own, every & an entity, and each link's href and text the same
+URL, escaped, as written in the note. The format is link.txt's.
+
+~~ case: a quote and a script after it
+https://x.org/"><script>alert(1)</script>
+~~ want
+<p id="p1"><a href="https://x.org/">https://x.org/</a>&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;</p>
+~~ case: ampersands in the query
+https://x.org/?a=1&b=2&lt=3
+~~ want
+<p id="p1"><a href="https://x.org/?a=1&amp;b=2&amp;lt=3">https://x.org/?a=1&amp;b=2&amp;lt=3</a></p>
+~~ case: single quotes and a handler
+https://x.org/'onmouseover='alert(1)
+~~ want
+<p id="p1"><a href="https://x.org/'onmouseover='alert(1)">https://x.org/'onmouseover='alert(1)</a></p>
+~~ case: a tag straight after it
+https://x.org/<img src=x onerror=alert(1)>
+~~ want
+<p id="p1"><a href="https://x.org/">https://x.org/</a>&lt;img src=x onerror=alert(1)&gt;</p>
+~~ case: entities written in it
+https://x.org/&quot;onclick=&quot;alert(1)
+~~ want
+<p id="p1"><a href="https://x.org/&amp;quot;onclick=&amp;quot;alert(1)">https://x.org/&amp;quot;onclick=&amp;quot;alert(1)</a></p>
+~~ case: a backslash and a quote
+https://x.org/\"onclick=alert(1)
+~~ want
+<p id="p1"><a href="https://x.org/">https://x.org/</a>&quot;onclick=alert(1)</p>
+~~ case: behind a script scheme
+javascript:alert(1)//https://x.org
+~~ want
+<p id="p1">javascript:alert(1)//<a href="https://x.org">https://x.org</a></p>
+~~ case: a heading
+# https://x.org/"<b>
+~~ want
+<h1 id="httpsxorgb"><a href="https://x.org/">https://x.org/</a>&quot;&lt;b&gt;</h1>
+~~ case: a table cell
+| a |
+|---|
+| https://x.org/"<b>&c |
+~~ want
+<div class="table-wrap"><table>
+<thead><tr><th>a</th></tr></thead>
+<tbody>
+<tr><td><a href="https://x.org/">https://x.org/</a>&quot;&lt;b&gt;&amp;c</td></tr>
+</tbody></table></div>

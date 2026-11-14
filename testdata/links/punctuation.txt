@@ -1,0 +1,91 @@
+Where a bare URL ends. Punctuation at its end is the sentence's; a ) or ]
+is the URL's only when the URL opened it. The format is link.txt's.
+
+~~ case: a period
+See https://x.org.
+~~ want
+<p id="p1">See <a href="https://x.org">https://x.org</a>.</p>
+~~ case: a period inside stays
+https://x.org/a.html
+~~ want
+<p id="p1"><a href="https://x.org/a.html">https://x.org/a.html</a></p>
+~~ case: an ellipsis
+https://x.org/a...
+~~ want
+<p id="p1"><a href="https://x.org/a">https://x.org/a</a>...</p>
+~~ case: a comma
+https://x.org/a, and then
+~~ want
+<p id="p1"><a href="https://x.org/a">https://x.org/a</a>, and then</p>
+~~ case: a colon
+at https://x.org: the page
+~~ want
+<p id="p1">at <a href="https://x.org">https://x.org</a>: the page</p>
+~~ case: a colon and a port inside stay
+https://x.org:8080/a
+~~ want
+<p id="p1"><a href="https://x.org:8080/a">https://x.org:8080/a</a></p>
+~~ case: a semicolon
+https://x.org; then
+~~ want
+<p id="p1"><a href="https://x.org">https://x.org</a>; then</p>
+~~ case: a question mark and an exclamation mark
+is it https://x.org/a? yes https://x.org/b!
+~~ want
+<p id="p1">is it <a href="https://x.org/a">https://x.org/a</a>? yes <a href="https://x.org/b">https://x.org/b</a>!</p>
+~~ case: a query with an empty value stays whole
+https://x.org/?a=
+~~ want
+<p id="p1"><a href="https://x.org/?a=">https://x.org/?a=</a></p>
+~~ case: a trailing slash stays
+https://x.org/a/.
+~~ want
+<p id="p1"><a href="https://x.org/a/">https://x.org/a/</a>.</p>
+~~ case: in parentheses
+(see https://x.org)
+~~ want
+<p id="p1">(see <a href="https://x.org">https://x.org</a>)</p>
+~~ case: in parentheses, then a period
+(on the dev channel at http://x.org/tutorial.fresh/).
+~~ want
+<p id="p1">(on the dev channel at <a href="http://x.org/tutorial.fresh/">http://x.org/tutorial.fresh/</a>).</p>
+~~ case: a parenthesis the URL opened
+https://en.wikipedia.org/wiki/Go_(language)
+~~ want
+<p id="p1"><a href="https://en.wikipedia.org/wiki/Go_(language)">https://en.wikipedia.org/wiki/Go_(language)</a></p>
+~~ case: a parenthesis the URL opened, inside parentheses
+(https://en.wikipedia.org/wiki/Go_(language)).
+~~ want
+<p id="p1">(<a href="https://en.wikipedia.org/wiki/Go_(language)">https://en.wikipedia.org/wiki/Go_(language)</a>).</p>
+~~ case: in square brackets
+[https://x.org]
+~~ want
+<p id="p1">[<a href="https://x.org">https://x.org</a>]</p>
+~~ case: in double quotes
+"https://x.org"
+~~ want
+<p id="p1">&quot;<a href="https://x.org">https://x.org</a>&quot;</p>
+~~ case: in single quotes
+'https://x.org'
+~~ want
+<p id="p1">'<a href="https://x.org">https://x.org</a>'</p>
+~~ case: in curly quotes
+“https://x.org”
+~~ want
+<p id="p1">“<a href="https://x.org">https://x.org</a>”</p>
+~~ case: an em dash straight after
+https://x.org—and more
+~~ want
+<p id="p1"><a href="https://x.org">https://x.org</a>—and more</p>
+~~ case: an underscore at its end
+https://x.org/a_
+~~ want
+<p id="p1"><a href="https://x.org/a">https://x.org/a</a>_</p>
+~~ case: bold, then a period
+**https://metal.lynrummy.com**.
+~~ want
+<p id="p1"><strong><a href="https://metal.lynrummy.com">https://metal.lynrummy.com</a></strong>.</p>
+~~ case: a backtick straight after
+https://x.org`code`
+~~ want
+<p id="p1"><a href="https://x.org">https://x.org</a><code>code</code></p>

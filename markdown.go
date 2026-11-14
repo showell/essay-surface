@@ -757,7 +757,11 @@ type piece struct {
 	closes   []string
 }
 
-func inline(s string) string {
+func inline(s string) string { return inlineText(s, false) }
+
+// inlineText is the inline pass; inLink is a link's own text, where a bare
+// URL stays text, since a link cannot hold another.
+func inlineText(s string, inLink bool) string {
 	var ps []piece
 	var text strings.Builder
 	flush := func() {
@@ -843,6 +847,14 @@ func inline(s string) string {
 			}
 			text.WriteString("<br>\n")
 			k = j + 1
+		case c == 'h' && !inLink:
+			if u := bareURL(s, k); u != "" {
+				text.WriteString(`<a href="` + escapeAttr(u) + `">` + escapeHTML(u) + "</a>")
+				k += len(u)
+			} else {
+				text.WriteByte(c)
+				k++
+			}
 		case c == '&' && isEntity(s[k:]):
 			// An entity the author wrote (&mdash;, &#39;) stays one.
 			e := strings.IndexByte(s[k:], ';')
@@ -1075,7 +1087,7 @@ func link(s string, k int, image bool) (string, int, bool) {
 		if title != "" {
 			b.WriteString(` title="` + escapeAttr(title) + `"`)
 		}
-		b.WriteString(">" + inline(label) + "</a>")
+		b.WriteString(">" + inlineText(label, true) + "</a>")
 	}
 	return b.String(), m + 1, true
 }
@@ -1087,6 +1099,61 @@ func safeURL(u string) string {
 		return "#"
 	}
 	return u
+}
+
+// bareURL is the http:// or https:// URL written bare at k, or "". It
+// starts a word, and runs to a space or to a character that would end it in
+// a sentence (<, >, ", a backtick, a backslash, or punctuation outside
+// ASCII, such as a dash or a curly quote). Punctuation at its end is the
+// sentence's, and so is a closing ) or ] that the URL did not open.
+func bareURL(s string, k int) string {
+	if r, _ := utf8.DecodeLastRuneInString(s[:k]); k > 0 && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+		return ""
+	}
+	rest := s[k:]
+	scheme := 0
+	switch {
+	case strings.HasPrefix(rest, "https://"):
+		scheme = len("https://")
+	case strings.HasPrefix(rest, "http://"):
+		scheme = len("http://")
+	default:
+		return ""
+	}
+	end := scheme
+	for end < len(rest) {
+		r, w := utf8.DecodeRuneInString(rest[end:])
+		if r < utf8.RuneSelf {
+			if r <= ' ' || r == 0x7f || strings.ContainsRune("<>\"`\\", r) {
+				break
+			}
+		} else if r == utf8.RuneError || unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
+			break
+		}
+		end += w
+	}
+	u := rest[:end]
+	for len(u) > scheme && sentenceEnd(u) {
+		u = u[:len(u)-1]
+	}
+	if len(u) == scheme || !(isASCIILetter(u[scheme]) || (u[scheme] >= '0' && u[scheme] <= '9')) {
+		return ""
+	}
+	return u
+}
+
+// sentenceEnd is a URL whose last character belongs to the sentence around
+// it, not to the URL.
+func sentenceEnd(u string) bool {
+	switch last := u[len(u)-1]; {
+	case strings.IndexByte(".,:;!?'*_~", last) >= 0:
+		return true
+	case last == ')':
+		return strings.Count(u, "(") < strings.Count(u, ")")
+	case last == ']':
+		return strings.Count(u, "[") < strings.Count(u, "]")
+	}
+	return false
 }
 
 // autolink matches <https://...> or <mailto:...> at k.
