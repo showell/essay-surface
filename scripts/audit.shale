@@ -75,25 +75,25 @@ if not index.ok then fail("the index: " .. index.error) end
 must(fetched)
 
 local faithful = json_read(FAITHFUL_TICKS)
-local rows = {}
-local bad = {}
+local leftovers = {}
+local mismatched = {}
 local unexplained = {}
 local blocks = 0
 for n in names do
   local a = audit(RUN .. "/pages/" .. n .. ".html")
   a.note = n
   blocks = blocks + a.blocks
-  if a.stars + a.links + a.tables + a.ticks > 0 then push(rows, a) end
-  if a.mismatch ~= 0 then push(bad, a) end
+  if a.stars + a.links + a.tables + a.ticks > 0 then push(leftovers, a) end
+  if a.mismatch ~= 0 then push(mismatched, a) end
   if a.stars + a.links + a.tables > 0 or a.ticks ~= get(faithful, n, 0) then push(unexplained, a) end
   yield()
 end
-sort(rows, "ticks", "desc")
-print(#names .. " pages, " .. blocks .. " commentable blocks, " .. #rows .. " pages with leftovers")
-if #rows > 0 then print(table(take(rows, 20), {"stars", "links", "tables", "ticks", "note"})) end
-if #bad > 0 then
-  print(table(take(bad, 20), {"blocks", "mismatch", "note"}))
-  fail(#bad .. " pages whose data-c count is not their fingerprint count")
+sort(leftovers, "ticks", "desc")
+print(#names .. " pages, " .. blocks .. " commentable blocks, " .. #leftovers .. " pages with leftovers")
+if #leftovers > 0 then print(table(take(leftovers, 20), {"stars", "links", "tables", "ticks", "note"})) end
+if #mismatched > 0 then
+  print(table(take(mismatched, 20), {"blocks", "mismatch", "note"}))
+  fail(#mismatched .. " pages whose data-c count is not their fingerprint count")
 end
 if #unexplained > 0 then
   local which = {}
