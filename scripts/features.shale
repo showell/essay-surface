@@ -1,0 +1,265 @@
+-- What a folder of notes uses: each markdown feature, the notes that use it,
+-- how many times, and the first place it appears. It reads the markdown
+-- source line by line, as markdown.go does, so a fence's lines are code and
+-- count only as a fence. The counts are for deciding what a new note format
+-- keeps; a feature the renderer does not support is counted all the same.
+--   shale scripts/features.shale dir=repos:essay-repl-server/notes
+--   shale scripts/features.shale dir=notes show=indented_code
+-- `show=` names one feature and prints every place it appears.
+-- budget: steps=400000000 arena_bytes=400000000
+
+const BLOCK_TAGS = "address article aside blockquote details div dl fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr iframe li nav ol p pre section summary table tbody td tfoot th thead tr ul img svg canvas video audio picture style script"
+
+function seen(st, feat, note, line, n)
+  if not has_key(st.notes, feat) then
+    st.notes[feat] = {}
+    st.first[feat] = note .. ":" .. line
+    push(st.order, feat)
+  end
+  st.notes[feat][note] = true
+  incr(st.count, feat, n)
+  if st.show == feat then print(note .. ":" .. line) end
+end
+
+-- the text of a line with its code spans taken out, so `**` in code is code
+function without_code(s)
+  return re_replace(re_replace(s, "``[^`]+``", " "), "`[^`]+`", " ")
+end
+
+function inline_features(st, note, ln, raw)
+  local tick = find(raw, "`") ~= nil
+  local s = raw
+  if tick then s = without_code(raw) end
+  local star = find(s, "*") ~= nil
+  local link = find(s, "](") ~= nil
+  if tick then seen(st, "code_span", note, ln, 1) end
+  if find(raw, "``") ~= nil and re_find(raw, "``[^`]") ~= nil then seen(st, "code_span_double", note, ln, 1) end
+  if star and re_find(s, "\\*\\*[^*\\s]") ~= nil then seen(st, "strong_star", note, ln, 1) end
+  if find(s, "__") ~= nil and re_find(s, "(^|\\W)__[^_\\s]") ~= nil then seen(st, "strong_underscore", note, ln, 1) end
+  if star and re_find(s, "(^|[^*\\w])\\*[^*\\s][^*]*\\*([^*]|$)") ~= nil then seen(st, "em_star", note, ln, 1) end
+  if find(s, "_") ~= nil and re_find(s, "(^|[^_\\w])_[^_\\s][^_]*_($|[^_\\w])") ~= nil then seen(st, "em_underscore", note, ln, 1) end
+  if find(s, "***") ~= nil and re_find(s, "\\*\\*\\*[^*\\s]") ~= nil then seen(st, "strong_em_triple", note, ln, 1) end
+  if find(s, "~~") ~= nil then seen(st, "strikethrough", note, ln, 1) end
+  if find(s, "[^") ~= nil then seen(st, "footnote", note, ln, 1) end
+  if find(s, "![") ~= nil and find(s, "](") ~= nil then seen(st, "image_inline", note, ln, 1) end
+  if link then for at in find_all(s, "](") do
+    local rest = sub(s, at + 2, at + 12)
+    local kind = "link_other"
+    if starts_with(rest, "http") then kind = "link_web"
+    elseif starts_with(rest, "#") then kind = "link_anchor"
+    elseif starts_with(rest, "/notes/") then kind = "link_note_absolute"
+    elseif re_find(sub(s, at + 2, #s), "^[A-Za-z0-9_./-]+\\.md[)#]") ~= nil then kind = "link_note_relative"
+    end
+    -- an image's ]( is the image's, not a link's
+    local open = 0
+    for b in find_all(sub(s, 1, at), "[") do open = b end
+    local is_image = open > 1 and sub(s, open - 1, open - 1) == "!"
+    if not is_image and at > 1 and sub(s, at - 1, at - 1) ~= "]" then seen(st, kind, note, ln, 1) end
+  end end
+  if link and re_find(s, "\\]\\([^)]* \"[^\"]*\"\\)") ~= nil then seen(st, "link_title", note, ln, 1) end
+  if find(s, "][") ~= nil and re_find(s, "\\[[^\\]]+\\]\\[[^\\]]*\\]") ~= nil then seen(st, "link_reference", note, ln, 1) end
+  local lt = find(s, "<") ~= nil
+  if lt and (re_find(s, "<https?://") ~= nil or find(s, "<mailto:") ~= nil) then seen(st, "autolink", note, ln, 1) end
+  if find(s, "://") ~= nil and re_find(s, "(^|[\\s(*])https?://") ~= nil then seen(st, "bare_url", note, ln, 1) end
+  if find(s, "\\") ~= nil and re_find(s, "\\\\[!-/:-@\\[-`{-~]") ~= nil then seen(st, "backslash_escape", note, ln, 1) end
+  if find(s, "&") ~= nil and re_find(s, "&(#[0-9]+|#x[0-9a-fA-F]+|[a-zA-Z]+);") ~= nil then seen(st, "entity", note, ln, 1) end
+  if lt then
+    local tag = re_find(s, "<(/?[a-zA-Z][a-zA-Z0-9]*)[ >/]")
+    if tag ~= nil then seen(st, "inline_html <" .. lower(tag.group) .. ">", note, ln, 1) end
+  end
+  -- one styled run inside another, or inside a link's text
+  if star and link and re_find(s, "\\*\\*[^*]*\\]\\([^)]*\\)[^*]*\\*\\*") ~= nil then seen(st, "nest_link_in_strong", note, ln, 1) end
+  if star and re_find(s, "\\*\\*[^*]+[^*\\w]\\*[^*\\s][^*]*\\*[^*\\w][^*]*\\*\\*") ~= nil then seen(st, "nest_em_in_strong", note, ln, 1) end
+  if star and re_find(s, "(^|[^*\\w])\\*[^*\\s][^*]*\\*\\*[^*]+\\*\\*[^*]*\\*([^*]|$)") ~= nil then seen(st, "nest_strong_in_em", note, ln, 1) end
+  if star and link and re_find(s, "(^|[^*\\w])\\*[^*\\s][^*]*\\]\\([^)]*\\)[^*]*\\*([^*]|$)") ~= nil then seen(st, "nest_link_in_em", note, ln, 1) end
+  if star and tick and re_find(raw, "(^|[^*\\w])\\*[^*\\s`][^*`]*`[^`]+`[^*]*\\*([^*]|$)") ~= nil then seen(st, "nest_code_in_em", note, ln, 1) end
+  if star and tick and re_find(raw, "\\*\\*[^*`]*`[^`]+`[^*]*\\*\\*") ~= nil then seen(st, "nest_code_in_strong", note, ln, 1) end
+  if tick and find(raw, "](") ~= nil and re_find(raw, "\\[[^\\]`]*`[^`]+`[^\\]]*\\]\\(") ~= nil then seen(st, "nest_code_in_link", note, ln, 1) end
+  if star and link and re_find(s, "\\[[^\\]]*\\*[^\\]]*\\]\\(") ~= nil then seen(st, "nest_styled_in_link", note, ln, 1) end
+  if star and re_find(s, "^ *(- |[0-9]+\\. )?[^*].*\\*\\*[^*\\s]") ~= nil then seen(st, "strong_not_leading", note, ln, 1) end
+  if re_find(raw, "[^ ]  $") ~= nil then seen(st, "hard_break_spaces", note, ln, 1) end
+  if re_find(raw, "[^\\\\]\\\\$") ~= nil then seen(st, "hard_break_backslash", note, ln, 1) end
+  if re_find(s, "\\$[^$ ][^$]*\\$") ~= nil and re_find(s, "\\$[0-9]") == nil then seen(st, "dollar_math?", note, ln, 1) end
+end
+
+function is_rule(line)
+  if re_find(line, "^ ? ? ?[-*_]") == nil then return false end
+  local t = re_replace(trim(line), " ", "")
+  if #t < 3 then return false end
+  return re_find(t, "^(-+|\\*+|_+)$") ~= nil
+end
+
+function list_marker(line)
+  local m = re_find(line, "^( *)([-*+]|[0-9]+[.)])( +|$)")
+  if m == nil then return nil end
+  return {indent = #m.groups[1], mark = m.groups[2], rest = sub(line, #m.text + 1, #line)}
+end
+
+function scan(st, path)
+  local note = basename(path)
+  local lines = split(read(path), "\n")
+  local fence = ""
+  local fence_lang = ""
+  local fence_start = 0
+  local fence_lines = 0
+  local prev = ""
+  local prev_kind = "blank"
+  local in_list = false
+  local para_lines = 0
+  local first_text = true
+  local h1s = 0
+  for i = 1, #lines do
+    local line = lines[i]
+    if fence ~= "" then
+      local t = trim(line)
+      if starts_with(t, fence) and re_find(t, "^[`~]+$") ~= nil and #t >= #fence then
+        if fence_lang == "dot" then seen(st, "dot_fence_lines", note, fence_start, fence_lines) end
+        fence = ""
+        prev_kind = "fence"
+      else
+        fence_lines = fence_lines + 1
+      end
+    elseif trim(line) == "" then
+      if prev_kind == "para" and para_lines > 1 then seen(st, "paragraph_wrapped", note, i - para_lines, 1) end
+      if prev_kind == "para" then seen(st, "paragraph", note, i - para_lines, 1) end
+      para_lines = 0
+      prev_kind = "blank"
+    else
+      local f = re_find(line, "^( *)(```+|~~~+) *([^ `]*)")
+      local lm = list_marker(line)
+      if first_text then
+        first_text = false
+        if not starts_with(line, "# ") then seen(st, "no_h1_first_line", note, i, 1) end
+      end
+      if f ~= nil then
+        fence = f.groups[2]
+        fence_lang = f.groups[3]
+        fence_start = i
+        fence_lines = 0
+        if fence_lang == "" then seen(st, "fence_plain", note, i, 1) else seen(st, "fence " .. fence_lang, note, i, 1) end
+        if starts_with(fence, "~") then seen(st, "fence_tilde", note, i, 1) end
+        if #fence > 3 then seen(st, "fence_long", note, i, 1) end
+        if #f.groups[1] > 0 then seen(st, "fence_indented", note, i, 1) end
+        if in_list and #f.groups[1] > 0 then seen(st, "fence_in_list_item", note, i, 1) end
+        if prev_kind == "para" then seen(st, "fence_right_after_para", note, i, 1) end
+        prev_kind = "fence"
+      elseif re_find(line, "^ ? ? ?#+( |$)") ~= nil and #re_find(line, "^ *(#+)").group <= 6 then
+        local h = re_find(line, "^ *(#+)")
+        local lv = #h.group
+        seen(st, "heading h" .. lv, note, i, 1)
+        if lv == 1 then h1s = h1s + 1 end
+        if h1s == 2 and lv == 1 then seen(st, "second_h1", note, i, 1) end
+        if re_find(line, " #+ *$") ~= nil then seen(st, "heading_closing_hashes", note, i, 1) end
+        local bare = without_code(line)
+        if find(bare, "*") ~= nil then seen(st, "heading_styled h" .. lv, note, i, 1) end
+        if find(bare, "](") ~= nil then seen(st, "heading_linked h" .. lv, note, i, 1) end
+        inline_features(st, note, i, line)
+        prev_kind = "heading"
+        in_list = false
+      elseif prev_kind == "para" and re_find(line, "^ ? ? ?=+ *$") ~= nil then
+        seen(st, "setext_h1", note, i, 1)
+        prev_kind = "heading"
+      elseif prev_kind == "para" and re_find(line, "^ ? ? ?-+ *$") ~= nil then
+        seen(st, "setext_h2_or_rule_under_text", note, i, 1)
+        prev_kind = "heading"
+      elseif is_rule(line) and lm == nil then
+        seen(st, "rule", note, i, 1)
+        if trim(line) ~= "---" then seen(st, "rule_not_three_dashes", note, i, 1) end
+        prev_kind = "rule"
+        in_list = false
+      elseif re_find(line, "^ ? ? ?>") ~= nil then
+        seen(st, "quote_line", note, i, 1)
+        if prev_kind ~= "quote" then seen(st, "quote", note, i, 1) end
+        if re_find(line, "^ ? ? ?> *>") ~= nil then seen(st, "quote_nested", note, i, 1) end
+        local inner = re_replace(line, "^ ? ? ?> ?", "")
+        if list_marker(inner) ~= nil then seen(st, "quote_holds_list", note, i, 1) end
+        if re_find(inner, "^```") ~= nil then seen(st, "quote_holds_fence", note, i, 1) end
+        inline_features(st, note, i, inner)
+        prev_kind = "quote"
+      elseif re_find(line, "^ ? ? ?<!--") ~= nil then
+        seen(st, "html_comment", note, i, 1)
+        prev_kind = "html"
+      elseif re_find(line, "^ ? ? ?</?[a-zA-Z][a-zA-Z0-9]*[ >/]") ~= nil and has_item(words(BLOCK_TAGS), lower(re_find(line, "^ ? ? ?</?([a-zA-Z][a-zA-Z0-9]*)").group)) then
+        seen(st, "html_block <" .. lower(re_find(line, "^ ? ? ?</?([a-zA-Z][a-zA-Z0-9]*)").group) .. ">", note, i, 1)
+        prev_kind = "html"
+      elseif prev_kind ~= "table" and find(line, "|") ~= nil and i < #lines and re_find(lines[i + 1], "^ *\\|? *:?-+:? *(\\| *:?-+:? *)*\\|? *$") ~= nil and find(lines[i + 1], "|") ~= nil then
+        seen(st, "table", note, i, 1)
+        if find(lines[i + 1], ":") ~= nil then seen(st, "table_aligned", note, i + 1, 1) end
+        local cols = #split(trim(lines[i + 1]), "|")
+        if starts_with(trim(lines[i + 1]), "|") then cols = cols - 1 end
+        if ends_with(trim(lines[i + 1]), "|") then cols = cols - 1 end
+        if cols > 4 then seen(st, "table_over_4_columns", note, i, 1) end
+        if prev_kind == "para" then seen(st, "table_right_after_para", note, i, 1) end
+        inline_features(st, note, i, line)
+        prev_kind = "table"
+        in_list = false
+      elseif prev_kind == "table" and find(line, "|") ~= nil then
+        if re_find(line, "^ *\\|? *:?-+:?") == nil then
+          seen(st, "table_row", note, i, 1)
+          inline_features(st, note, i, line)
+        end
+      elseif lm ~= nil then
+        if re_find(lm.mark, "^[0-9]") ~= nil then
+          seen(st, "list_ordered_item", note, i, 1)
+          if not in_list and lm.mark ~= "1." and lm.mark ~= "1)" then seen(st, "list_ordered_not_from_1", note, i, 1) end
+          if ends_with(lm.mark, ")") then seen(st, "list_ordered_paren", note, i, 1) end
+        else
+          seen(st, "list_bullet_item", note, i, 1)
+          if lm.mark ~= "-" then seen(st, "list_bullet " .. lm.mark, note, i, 1) end
+        end
+        if lm.indent >= 2 then seen(st, "list_nested_item", note, i, 1) end
+        if lm.indent >= 4 then seen(st, "list_nested_two_deep?", note, i, 1) end
+        if re_find(lm.rest, "^\\[[ xX]\\] ") ~= nil then seen(st, "task_item", note, i, 1) end
+        if in_list and prev_kind == "blank" then seen(st, "list_loose_gap", note, i, 1) end
+        if not in_list and prev_kind == "para" then seen(st, "list_right_after_para", note, i, 1) end
+        if re_find(lm.rest, "^\\*\\*[^*]+\\*\\*") ~= nil then seen(st, "list_item_bold_lead", note, i, 1) end
+        inline_features(st, note, i, lm.rest)
+        in_list = true
+        prev_kind = "list"
+      elseif re_find(line, "^    ") ~= nil and prev_kind == "blank" and not in_list then
+        seen(st, "indented_code", note, i, 1)
+        prev_kind = "indented"
+      elseif prev_kind == "indented" and re_find(line, "^    ") ~= nil then
+        prev_kind = "indented"
+      else
+        if in_list and re_find(line, "^ +") ~= nil then
+          if prev_kind == "blank" then seen(st, "list_item_second_paragraph", note, i, 1) end
+          inline_features(st, note, i, line)
+          prev_kind = "list"
+        elseif in_list and prev_kind == "list" then
+          seen(st, "list_lazy_continuation", note, i, 1)
+          inline_features(st, note, i, line)
+        else
+          in_list = false
+          if prev_kind ~= "para" then
+            para_lines = 0
+            if re_find(line, "^\\*\\*[^*]+\\*\\*") ~= nil then seen(st, "paragraph_bold_lead", note, i, 1) end
+            if re_find(line, "^!\\[[^\\]]*\\]\\([^)]*\\) *$") ~= nil then seen(st, "image_alone", note, i, 1) end
+            if re_find(line, "^\\*[^*].*\\*$") ~= nil or re_find(line, "^_[^_].*_$") ~= nil then seen(st, "paragraph_all_italic_line", note, i, 1) end
+          end
+          para_lines = para_lines + 1
+          inline_features(st, note, i, line)
+          prev_kind = "para"
+        end
+      end
+    end
+  end
+  if fence ~= "" then seen(st, "fence_unclosed", note, fence_start, 1) end
+end
+
+local dir = arg("dir", "notes")
+local st = {notes = {}, first = {}, count = {}, order = {}, show = arg("show", "")}
+local paths = glob(path_under(dir, "*.md"))
+for p in paths do
+  scan(st, p)
+  yield()
+end
+if st.show == "" then
+  local rows = {}
+  for f in st.order do
+    push(rows, {feature = f, notes = #keys(st.notes[f]), times = st.count[f], first = st.first[f]})
+  end
+  sort(rows, "notes", "desc")
+  print(table(rows, {"feature", "notes", "times", "first"}))
+  print(#paths .. " notes in " .. dir)
+end
