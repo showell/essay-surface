@@ -341,7 +341,10 @@ if #servers ~= 1 then
   fail(#servers .. " servers run as `" .. join(rel_argv(t), " ") .. "`, not one: nothing touched")
 end
 print("running: pid " .. servers[1].pid .. ", " .. rel_version(t, ""))
-if t.rollback and not exists(t.data .. "/bin/essay-surface.prev") then fail("no bin/essay-surface.prev to roll back to") end
+if t.rollback and not exists(t.data .. "/bin/essay-surface.prev") then
+  if exists(t.data .. "/bin/essay-surface.failed") then fail("nothing to roll back: the last release failed and already put the old server back") end
+  fail("no bin/essay-surface.prev to roll back to")
+end
 
 if not t.rollback then
   -- 2: the full check.
