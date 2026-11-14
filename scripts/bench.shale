@@ -118,15 +118,15 @@ function comments_for(name, page, n, posts)
   return n
 end
 
--- The phases, each on a server of its own, so the CPU it reports on its
--- way out is that phase's. Their lines are returned, not printed, so the
--- caller can stop the server before anything else.
 function note_urls()
   local out = {}
   for n in essay_names(http_get(essay_base() .. "/").body) do push(out, essay_base() .. "/notes/" .. n) end
   return out
 end
 
+-- The phases, each on a server of its own, so the CPU it reports on its
+-- way out is that phase's. Their lines are returned, not printed, so the
+-- caller can stop the server before anything else.
 function phase_index(rounds)
   local out = {lines = {}, medians = {}, bad = 0}
   report(out, "index", timed(repeat_url(essay_base() .. "/", rounds)))
@@ -160,11 +160,9 @@ function phase_comments(rounds, per, big_n)
   local posts = {}
   local wanted = 0
   for n in names do
-    if n == BIG then
-      wanted = wanted + comments_for(n, RUN .. "/pages/" .. n, big_n, posts)
-    else
-      wanted = wanted + comments_for(n, RUN .. "/pages/" .. n, per, posts)
-    end
+    local count = per
+    if n == BIG then count = big_n end
+    wanted = wanted + comments_for(n, RUN .. "/pages/" .. n, count, posts)
     yield()
   end
   local made = post_all(posts)
@@ -220,7 +218,6 @@ local after = essay_load()
 print("servers stopped")
 for l in all.lines do print(l) end
 for l in verdicts do print(l) end
-local result = {value = all}
 
 local quiet = before.hundredths * 2 < before.cpus * 100 and after.hundredths * 2 < after.cpus * 100
 if not quiet then
@@ -229,7 +226,7 @@ else
   local budget = json_read(MEDIAN_BUDGET_US)
   local over = {}
   for label in keys(budget) do
-    if result.value.medians[label] > budget[label] then push(over, label .. " median " .. show_us(result.value.medians[label]) .. ", budget " .. show_us(budget[label])) end
+    if all.medians[label] > budget[label] then push(over, label .. " median " .. show_us(all.medians[label]) .. ", budget " .. show_us(budget[label])) end
   end
   if #over > 0 then fail("latency: " .. join(over, "; ")) end
   print("latency: every median within budget (load " .. before.said .. " before, " .. after.said .. " after): PASS")
