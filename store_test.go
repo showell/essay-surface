@@ -16,7 +16,7 @@ func TestCommentsParentMustExist(t *testing.T) {
 	writeNote(t, dir, "a.md", "# A\n", time.Now())
 	file := filepath.Join(dir, "a.md")
 	for _, parent := range []string{filepath.Join(dir, "missing"), file} {
-		s, err := newStore(dir, filepath.Join(parent, "comments"))
+		s, err := newStore(dir, filepath.Join(parent, "comments"), "")
 		if err == nil {
 			s.close()
 			t.Fatalf("%s: the store started", parent)
@@ -28,7 +28,7 @@ func TestCommentsParentMustExist(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "missing")); !os.IsNotExist(err) {
 		t.Error("the missing parent was made")
 	}
-	s, err := newStore(dir, filepath.Join(dir, "comments"))
+	s, err := newStore(dir, filepath.Join(dir, "comments"), "")
 	if err != nil {
 		t.Fatalf("a parent that is there, its comments folder not yet: %v", err)
 	}

@@ -25,7 +25,7 @@ func writeNote(t testing.TB, dir, name, text string, modified time.Time) {
 // testStore serves dir, with its comments in a folder inside it. Its
 // watch is closed after the test: a user has 128 inotify instances.
 func testStore(t testing.TB, dir string) *store {
-	s, err := newStore(dir, filepath.Join(dir, "comments"))
+	s, err := newStore(dir, filepath.Join(dir, "comments"), "")
 	if err != nil {
 		t.Fatal(err)
 	}

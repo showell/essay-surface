@@ -1,6 +1,7 @@
 -- fast.shale: the check for every edit, a few seconds. gofmt, vet, the
--- front end's syntax, every Go test on the sample notes, and the comment
--- flow through the real server. It stops at the first stage that fails.
+-- front end's syntax, every Go test on the sample notes, the comment
+-- flow through the real server, and the .note path from its Roc to its
+-- page (note_check.shale). It stops at the first stage that fails.
 -- Each stage is held to a CPU budget, which a busy box does not break as
 -- it does wall time; a budget is several times the stage's usual cost, so
 -- only a real slowdown passes it.
@@ -83,4 +84,6 @@ local test = stage("test", {"go", "test", "-count=1", "-v", "."}, {cpu_budget_ms
 said("test", test, ": " .. #re_lines(test.out, "^--- PASS") .. " tests passed, " .. #re_lines(test.out, "^    --- PASS") .. " subtests")
 local smoke = stage("smoke", {"shale", "scripts/comments_smoke.shale"}, {cpu_budget_ms = 30000})
 said("smoke", smoke, ": " .. #re_lines(smoke.out, "^ok: ") .. " checks through the real server")
+local note = stage("note", {"shale", "scripts/note_check.shale"}, {cpu_budget_ms = 30000})
+said("note", note, ": " .. #re_lines(note.out, "^ok: ") .. " checks, from the Roc to the page")
 print("fast: PASS")

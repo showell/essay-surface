@@ -1,0 +1,61 @@
+# The first note in the surface's own format
+
+*2026-11-14. A demo of the `.note` format: one file, read by Roc into the types in `format/`, drawn as a page that takes replies like any other note.*
+
+This page was never markdown. The server found `format-demo.note` beside the markdown notes, ran the Roc program `render-note` on it, and got back the page as JSON: the title, the body, and each block a reader can reply to. Every block here takes a reply, the title and the line under it included.
+
+**Where Roc runs.** On the server, as a program of its own. The Go server runs it once each time a `.note` file changes, the same way essay-repl-server already runs its Roc markdown renderer, and keeps the page it gets back.
+
+## What a note is made of
+
+A note is a title, an optional subtitle, and a list of blocks. The blocks on this page are the kinds the demo reads:
+
+- **Paragraphs,** like this one's neighbours, with an optional bold lead.
+- **Headings,** a section or a subsection.
+- **Lists,** bulleted or numbered, where each point is one paragraph and may have subpoints:
+  - a subpoint is one paragraph too;
+  - and it holds no list of its own.
+- **Quotes, code and diagrams,** each below.
+- **A divider,** at the end.
+
+A link goes to another note by its name, like [the notes](arrays-that-are-values), or to the web, like [Roc's site](https://www.roc-lang.org/). Bold holds `code` but never *italics*, and that rule is in the types, not in a check.
+
+### Numbered, from where it left off
+
+5. A numbered list keeps the number it starts at.
+6. So a count that goes on past a heading stays right.
+
+> **The rule for a quote.** Each of its paragraphs takes a reply of its own.
+>
+> This is the second one.
+
+## The code
+
+The parser's entry, as it stands in `format/Parse.roc`:
+
+```roc
+note : Str -> Try(Note, Parse.Problem)
+```
+
+## The diagram
+
+How a `.note` becomes the page you are reading:
+
+```dot
+digraph note_to_page {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  file [label="format-demo.note"];
+  go [label="Go server\nstore.go"];
+  roc [label="render-note\n(Roc)"];
+  page [label="the page\nwith replies"];
+  file -> go [label="changed"];
+  go -> roc [label="the text,\nas arguments"];
+  roc -> go [label="JSON"];
+  go -> page;
+}
+```
+
+---
+
+The viz.js in the page draws the diagram, the same library and the same defaults essay-repl-server uses for a `dot` fence.

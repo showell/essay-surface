@@ -1,0 +1,171 @@
+-- note_check.shale: the .note path end to end. The Roc in format/ formatted,
+-- checked with no errors and no warnings, and its expects run, every one of
+-- them; render-note built from it; every note in notes/ rendered, and each
+-- of its diagrams drawn by the page's own viz.js under node; then the real
+-- server on a folder of its own, with the demo note, a markdown note and a
+-- note that doesn't parse: replies posted to a .note's blocks, the note
+-- edited on disk under them, a link by name, and the broken note failing
+-- alone. Everything the server is up for runs under attempt; the server is
+-- stopped before the verdict.
+--   shale scripts/note_check.shale
+-- Its last line is "note: PASS".
+const DIR = ".run/note"
+const DEMO = "format-demo.note"
+
+function want(cond, what, out)
+  if not cond then fail("not so: " .. what) end
+  push(out, "ok: " .. what)
+end
+
+-- The pinned Roc, refused if it says another version.
+function pinned_roc()
+  local pin = trim(read("format/roc-version"))
+  local roc = real("tools:roc-" .. pin .. "/roc")
+  local said = must(run({roc, "version"}, {timeout_ms = 10000, tail = 3})).out
+  if find(said, pin) == nil then fail("the Roc at " .. roc .. " says " .. said .. ", and format/roc-version pins " .. pin) end
+  return roc
+end
+
+-- A Roc verdict with no error and no warning, whatever the exit code says.
+function clean(r, what)
+  if r.code ~= 0 or find(r.out, "✗") ~= nil or find(r.out, "●") ~= nil then
+    print(r.out)
+    fail(what .. ": exit " .. r.code .. ", or an error or a warning")
+  end
+end
+
+-- A note's page as render-note prints it.
+function rendered(path)
+  local r = must(run({real("render-note"), read(path)}, {timeout_ms = 10000, whole = 4000000, want = "render-note: the renderer this check just built"}))
+  return json_read(r.out)
+end
+
+function replace_all(s, old, new)
+  return join(split(s, old), new)
+end
+
+-- Text as the browser reads it from between tags, the four escapes
+-- format/Page.roc makes undone.
+function unescaped(s)
+  return replace_all(replace_all(replace_all(replace_all(s, "&lt;", "<"), "&gt;", ">"), "&quot;", "\""), "&amp;", "&")
+end
+
+-- The dot source of each diagram in a page's body, as the browser reads it.
+function diagram_sources(body)
+  local out = {}
+  for part in drop(split(body, "<figure class=\"dot\""), 1) do
+    push(out, unescaped(between(part, "<code class=\"language-dot\">", "\n</code>")))
+  end
+  return out
+end
+
+function page(name)
+  local r = http_get(essay_base() .. "/notes/" .. name)
+  if r.status ~= 200 then fail(name .. ": " .. r.status) end
+  return r.body
+end
+
+function post(name, block, hash, text)
+  return http("POST", essay_base() .. "/notes/" .. name .. "/comments", {headers = {"Content-Type: application/json"},
+    body = json_write({block = block, hash = hash, name = "Check", text = text})})
+end
+
+-- The number of the first block whose text starts so.
+function block_starting(blocks, start)
+  local k = 0
+  for b in blocks do
+    if starts_with(b.text, start) then return k end
+    k = k + 1
+  end
+  fail("no block starts " .. start)
+end
+
+function flow(demo)
+  local out = {}
+  local index = http_get(essay_base() .. "/").body
+  want(find(index, "3 notes") ~= nil, "the index lists 3 notes", out)
+  want(find(index, "href=\"/notes/" .. DEMO .. "\">" .. demo.title .. "</a>") ~= nil, "it lists the .note by its title", out)
+  want(find(index, "href=\"/notes/broken.note\">broken</a>") ~= nil, "and the broken note by its name", out)
+
+  local p = page(DEMO)
+  local hashes = essay_hashes(p)
+  want(#hashes == #demo.blocks, "the page has the renderer's " .. #demo.blocks .. " blocks", out)
+  want(find(p, demo.body) ~= nil, "and its body as the renderer wrote it", out)
+  want(find(p, "<script src=\"/assets/viz-standalone.js\"></script>") ~= nil, "it loads viz.js for its diagram", out)
+
+  local figure = block_starting(demo.blocks, "digraph")
+  local r = post(DEMO, figure, hashes[figure + 1], "Is <the arrow> & its label right?")
+  want(r.status == 201, "a reply to the diagram is posted (201)", out)
+  local sub_k = block_starting(demo.blocks, "a subpoint is")
+  r = post(DEMO, sub_k, hashes[sub_k + 1], "On a subpoint.")
+  want(r.status == 201, "a reply to a subpoint is posted (201)", out)
+  local second = block_starting(demo.blocks, "This is the second one.")
+  r = post(DEMO, second, hashes[second + 1], "On the quote's second paragraph.")
+  want(r.status == 201, "a reply to a quote's paragraph is posted (201)", out)
+  p = page(DEMO)
+  want(find(p, "</figure><div class=\"cmts\" data-for=\"" .. figure .. "\">") ~= nil, "the diagram's reply follows the figure", out)
+  want(find(p, "Is &lt;the arrow&gt; &amp; its label right?") ~= nil, "escaped", out)
+  want(find(p, "a subpoint is one paragraph too;</span><div class=\"cmts\" data-for=\"" .. sub_k .. "\">") ~= nil, "the subpoint's reply follows its text", out)
+
+  edit(DIR .. "/notes/" .. DEMO, "> This is the second one.", "> This is the second one, edited.")
+  p = page(DEMO)
+  want(find(p, "This is the second one, edited.</p><div class=\"cmts\" data-for=\"" .. second .. "\">") ~= nil, "after an edit on disk, the quote's reply follows its paragraph", out)
+  want(find(p, "<summary>on an earlier version</summary>") ~= nil, "and says it was made on an earlier version", out)
+
+  local link = http("GET", essay_base() .. "/notes/format-demo", {})
+  want(link.status == 302 and link.headers["location"] == "/notes/" .. DEMO, "a link by name goes to the .note", out)
+  local viz = http_get(essay_base() .. "/assets/viz-standalone.js")
+  want(viz.status == 200 and #viz.body == #read("assets/viz-standalone.js"), "viz.js is served whole", out)
+
+  local broken = page("broken.note")
+  want(find(broken, "<p class=\"note-problem\">This note can't be shown. line 3: a style here holds nothing.</p>") ~= nil, "the broken note's page says what is wrong, and where", out)
+  want(#essay_hashes(broken) == 0, "and has no blocks to reply to", out)
+  local md = page("plain.md")
+  want(find(md, "viz-standalone") == nil and find(md, "class=\"subtitle\"") == nil and #essay_hashes(md) == 2, "the markdown note is as it was", out)
+  return out
+end
+
+local roc = pinned_roc()
+clean(run({roc, "fmt", "--check", "format"}, {timeout_ms = 60000, tail = 20}), "roc fmt --check format")
+print("ok: format/ is formatted")
+clean(run({roc, "check", "format/render_note.roc"}, {timeout_ms = 60000, tail = 40}), "roc check format/render_note.roc")
+print("ok: roc check format/render_note.roc, no errors and no warnings")
+local expects = 0
+for p in glob("format/*.roc") do expects = expects + #re_lines(read(p), "^expect") end
+local tested = run({roc, "test", "format/render_note.roc"}, {timeout_ms = 60000, tail = 40})
+clean(tested, "roc test format/render_note.roc")
+if find(tested.out, "All (" .. expects .. ") tests passed") == nil then
+  print(tested.out)
+  fail("roc test: want all " .. expects .. " expects in format/ to pass")
+end
+print("ok: all " .. expects .. " expects in format/ pass")
+clean(run({roc, "build", "format/render_note.roc", "--opt=dev", "--output=render-note"}, {timeout_ms = 60000, tail = 20}), "roc build")
+print("ok: render-note built")
+must(run({"node", "--check", "assets/diagrams.js"}, {timeout_ms = 10000, tail = 10, want = "check: the diagram script's syntax, which go test cannot see"}))
+
+local sources = {}
+local notes = glob("notes/*.note")
+for p in notes do
+  local r = rendered(p)
+  if find(r.body, "note-problem") ~= nil then fail(p .. " can't be shown: " .. r.body) end
+  for s in diagram_sources(r.body) do push(sources, s) end
+end
+if #notes == 0 or #sources == 0 then fail("notes/ has no .note with a diagram to draw") end
+print("ok: " .. #notes .. " .note in notes/ rendered")
+local drawn = must(run({"node", "scripts/draw_diagrams.cjs"}, {timeout_ms = 30000, tail = 10, stdin = json_write(sources), want = "check: the diagrams drawn by the page's own viz.js"}))
+print("ok: " .. trim(drawn.out))
+
+essay_build()
+essay_fresh(DIR)
+mkdir(DIR .. "/notes")
+create(DIR .. "/notes/" .. DEMO, read("notes/" .. DEMO))
+create(DIR .. "/notes/plain.md", "# Plain\n\nA paragraph.\n")
+create(DIR .. "/notes/broken.note", "# Broken\n\nA **** here.\n")
+local demo = rendered("notes/" .. DEMO)
+local job = essay_start(DIR .. "/notes", DIR .. "/comments", DIR .. "/server.log")
+local result = attempt(flow, demo)
+essay_stop(job, DIR .. "/server.log")
+print("server stopped")
+if not result.ok then fail("the flow stopped: " .. result.error .. " (line " .. result.line .. ")") end
+for l in result.value do print(l) end
+print("note: PASS")

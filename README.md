@@ -6,11 +6,13 @@ Phones are out of scope: the pages are made for, and checked in, a desktop brows
 
 Two checks, run from the repo root:
 
-- `shale scripts/fast.shale` after every edit: gofmt, vet, the JS, the tests, the comment flow through the real server. A few seconds.
+- `shale scripts/fast.shale` after every edit: gofmt, vet, the JS, the tests, the comment flow through the real server, and the `.note` path (`scripts/note_check.shale`). A few seconds.
 - `shale scripts/full.shale` before anything ships: the fast check, the race detector, and the anchoring, the rendering, the dates and the speed on all the real notes. About half a minute; its last line is `SAFE TO SHIP` or `NOT SAFE`.
 
 A release is `scripts/release.shale`, from the folder that holds the data folder (`bin/essay-surface`, `notes/`, `comments/`): `cd /home/steve && shale repos:essay-surface/scripts/release.shale data=essay-dogfood port=9301`. It runs the full check, builds beside the old binary, copies the comments to `releases/<when>/`, swaps the servers and checks every comment is still where it was, and puts the old server back if not. `rollback=1` swaps back to the last. Its header says the rest. The checks' own servers listen on 9310, so a check runs beside a server on 9300.
 
 The stages are scripts of their own in `scripts/`: `audit`, `bench` and `dates` take `dir=` for another folder of notes, and `comments_smoke` makes its own. `features` counts what a folder of notes uses (`dir=`), for deciding what the new format keeps.
 
-`format/` holds the Roc types proposed for a note format of the surface's own (`.note` files), with `format/roc-version` naming the compiler. They are types only so far: `roc check format/Note.roc` reaches them all.
+`format/` holds the surface's own note format (`.note` files) in Roc, with `format/roc-version` naming the compiler: the types, `Parse.roc` (the syntax, in its header), `Page.roc` (the HTML and the blocks that take replies), and `render_note.roc`, a headerless app on Roc's built-in platform that prints a note's page as JSON. The server runs it once each time a `.note` changes (`note.go`), from `render-note` beside its own binary unless `-note-renderer` names another. `scripts/note_check.shale` builds it at the root (`roc build format/render_note.roc --opt=dev --output=render-note`), checks and tests the Roc, draws each diagram with the page's viz.js under node, and runs a `.note` through the real server. `release.shale` doesn't build `render-note` yet, so a released server shows a `.note` as a page that says it can't be shown.
+
+Pitfall: a `.note` that doesn't parse, or a renderer that fails, makes that note's page say why, and the rest are served as usual; the server logs it.

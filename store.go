@@ -33,12 +33,15 @@ type note struct {
 	modified time.Time // the file's, the last of the three dates
 	body     string    // the rendered note, blocks marked
 	blocks   []Block   // its commentable blocks
+	style    string    // what its page adds to the style: a .note's, or nothing
+	scripts  string    // what its page adds to the scripts: a .note's diagrams, or nothing
 	page     []byte    // the whole page with its comments, or nil until made
 }
 
 type store struct {
 	dir      string // the notes
 	comments string // the comments, one file a note
+	renderer string // the program that renders a .note (note.go)
 	watch    *watcher
 
 	// The watches: the notes folder, the comments folder (-1 while it is
@@ -68,9 +71,9 @@ type store struct {
 	indexBuilds, rescans atomic.Int64
 }
 
-// newStore watches the folders and renders every note. The comments
-// folder may be missing, but not the folder it goes in.
-func newStore(dir, comments string) (*store, error) {
+// newStore watches the folders and renders every note, a .note with the
+// renderer. The comments folder may be missing, but not the folder it goes in.
+func newStore(dir, comments, renderer string) (*store, error) {
 	// The parent is checked, never made: a mistyped -comments would
 	// otherwise grow a folder of comments somewhere nobody looks.
 	parent := filepath.Dir(comments)
@@ -81,7 +84,7 @@ func newStore(dir, comments string) (*store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &store{dir: dir, comments: comments, watch: w, commentsWd: -1,
+	s := &store{dir: dir, comments: comments, renderer: renderer, watch: w, commentsWd: -1,
 		pendingNotes: map[string]bool{}, pendingPages: map[string]bool{},
 		gitWhen: map[string]time.Time{}, notes: map[string]*note{}}
 	if s.parentWd, err = w.add(filepath.Dir(comments)); err != nil {
@@ -176,16 +179,20 @@ func (s *store) load(name string) (*note, error) {
 	}
 	text := string(src)
 	n := &note{name: name, modified: info.ModTime()}
-	n.title = TitleHTML(Title(text))
-	if n.title == "" {
-		n.title = html.EscapeString(strings.TrimSuffix(name, ".md"))
-	}
 	if d, ok := noteDate(text); ok {
 		n.date, n.from = d, dateFromNote
 	} else {
 		n.date, n.from = n.modified, dateFromFile
 	}
-	n.body, n.blocks = RenderBlocks(text)
+	if strings.HasSuffix(name, formatExt) {
+		n.loadFormat(s.renderer, text)
+	} else {
+		n.title = TitleHTML(Title(text))
+		if n.title == "" {
+			n.title = html.EscapeString(strings.TrimSuffix(name, markdownExt))
+		}
+		n.body, n.blocks = RenderBlocks(text)
+	}
 	indexBlocks(n.blocks)
 	return n, nil
 }

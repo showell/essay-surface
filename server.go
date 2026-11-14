@@ -22,10 +22,25 @@ import (
 	"time"
 )
 
-// validName is a note's file name: one path element ending in .md.
+// validName is a note's file name: one path element ending in .md, or in
+// .note for a note in the surface's own format.
 func validName(name string) bool {
-	return strings.HasSuffix(name, ".md") && len(name) > 3 && !strings.ContainsAny(name, "/\\") &&
-		!strings.HasPrefix(name, ".")
+	return (strings.HasSuffix(name, markdownExt) || strings.HasSuffix(name, formatExt)) &&
+		!strings.ContainsAny(name, "/\\") && !strings.HasPrefix(name, ".")
+}
+
+// noteName is a note's name with no extension, as a link in a .note names
+// it: lowercase letters, digits and hyphens (format/NoteName.roc).
+func noteName(name string) bool {
+	if name == "" || name[0] == '-' {
+		return false
+	}
+	for k := 0; k < len(name); k++ {
+		if c := name[k]; !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *store) serveIndex(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +57,10 @@ func (s *store) serveIndex(w http.ResponseWriter, r *http.Request) {
 func (s *store) serveNote(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	name := strings.TrimPrefix(r.URL.Path, "/notes/")
+	if noteName(name) {
+		s.redirectToNote(w, r, name)
+		return
+	}
 	if !validName(name) {
 		http.NotFound(w, r)
 		return
@@ -58,6 +77,25 @@ func (s *store) serveNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writePage(w, n.page, start)
+}
+
+// redirectToNote sends a link to a note by its name to its file: the .note
+// if there is one, else the .md. A .note's links name notes this way, since
+// the note that writes the link can't know which kind the other is.
+func (s *store) redirectToNote(w http.ResponseWriter, r *http.Request, name string) {
+	for _, ext := range []string{formatExt, markdownExt} {
+		n, err := s.note(name + ext)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Print(err)
+			return
+		}
+		if n != nil {
+			http.Redirect(w, r, "/notes/"+name+ext, http.StatusFound)
+			return
+		}
+	}
+	http.NotFound(w, r)
 }
 
 // commentRequest is what the page posts: the block by its number and its
@@ -155,6 +193,8 @@ func (s *store) handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.serveIndex)
 	mux.HandleFunc("GET /notes/", s.serveNote)
 	mux.HandleFunc("POST /notes/{name}/comments", s.postComment)
+	mux.HandleFunc("GET /assets/viz-standalone.js", serveAsset(vizJS))
+	mux.HandleFunc("GET /assets/diagrams.js", serveAsset(diagramsJS))
 	return mux
 }
 
@@ -210,9 +250,10 @@ func notePage(n *note, cs []*Comment, places []placed) []byte {
 		}
 	}
 	var b bytes.Buffer
-	b.Grow(len(n.body) + len(style) + len(commentStyle) + len(commentScript) + 300*len(cs) + 12*len(n.blocks) + 1024)
+	b.Grow(len(n.body) + len(style) + len(commentStyle) + len(n.style) + len(commentScript) + len(n.scripts) + 300*len(cs) + 12*len(n.blocks) + 1024)
 	pageHead(&b, n.title)
 	b.WriteString(commentStyle)
+	b.WriteString(n.style)
 	b.WriteString(`<nav><a href="/">All notes</a> · <span class="date">`)
 	b.WriteString(n.date.Format("2006-01-02"))
 	b.WriteString("</span></nav>\n<article>\n")
@@ -251,6 +292,7 @@ func notePage(n *note, cs []*Comment, places []placed) []byte {
 	b.Write(name)
 	b.WriteString(";</script>\n")
 	b.WriteString(commentScript)
+	b.WriteString(n.scripts)
 	b.WriteString("</main></body></html>\n")
 	return b.Bytes()
 }
@@ -294,15 +336,23 @@ func indexPage(list []*note) []byte {
 }
 
 func main() {
-	dir := flag.String("notes", "notes", "the folder of .md notes")
+	dir := flag.String("notes", "notes", "the folder of .md and .note notes")
+	renderer := flag.String("note-renderer", "", "the program that renders a .note (default: render-note beside this server)")
 	comments := flag.String("comments", "", "the folder of comment files (default: comments beside the notes folder)")
 	addr := flag.String("addr", "127.0.0.1:9300", "the address to listen on")
 	flag.Parse()
 	if *comments == "" {
 		*comments = filepath.Join(filepath.Dir(filepath.Clean(*dir)), "comments")
 	}
+	if *renderer == "" {
+		self, err := os.Executable()
+		if err != nil {
+			log.Fatal(err)
+		}
+		*renderer = filepath.Join(filepath.Dir(self), "render-note")
+	}
 	start := time.Now()
-	s, err := newStore(*dir, *comments)
+	s, err := newStore(*dir, *comments, *renderer)
 	if err != nil {
 		log.Fatal(err)
 	}
