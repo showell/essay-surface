@@ -4,7 +4,9 @@
 --      data folder, as `bin/essay-surface -notes <data>/notes -addr
 --      127.0.0.1:<port>`. Nothing is touched otherwise.
 --   2. scripts/full.shale must end SAFE TO SHIP.
---   3. The new server is built beside the old, as bin/essay-surface.new.
+--   3. The new server is built beside the old, as bin/essay-surface.new,
+--      with its .note renderer as bin/render-note.new, which must render
+--      the demo note. From here on the renderer moves with its server.
 --   4. The comments folder is copied to releases/<when>/comments and the
 --      copy compared file by file; the old server's log is kept there too,
 --      with the pages of every note that has comments, as the old server
@@ -51,11 +53,15 @@ function rel_mv(from, to)
   must(run({"mv", "-T", real(from), real(to)}, {timeout_ms = 10000, tail = 5}))
 end
 
--- A binary and its .version beside it, moved together.
+-- A binary, its .version and its renderer, moved together. The server runs
+-- the render-note beside it (server.go), so a binary that moves without its
+-- renderer would show every .note with the other release's.
 function rel_move_bin(t, from, to)
   local b = t.data .. "/bin/essay-surface"
   rel_mv(b .. from, b .. to)
   if exists(b .. from .. ".version") then rel_mv(b .. from .. ".version", b .. to .. ".version") end
+  local r = t.data .. "/bin/render-note"
+  if exists(r .. from) then rel_mv(r .. from, r .. to) end
 end
 
 -- A binary's version: its commit, when it was built, and the commit's
@@ -261,6 +267,7 @@ function rel_put_back(t, before)
   elseif not t.rollback then
     if exists(b .. ".failed") then remove(b .. ".failed") end
     if exists(b .. ".failed.version") then remove(b .. ".failed.version") end
+    if exists(t.data .. "/bin/render-note.failed") then remove(t.data .. "/bin/render-note.failed") end
     rel_move_bin(t, "", ".failed")
     rel_move_bin(t, ".prev", "")
   end
@@ -364,6 +371,15 @@ if not t.rollback then
   local build = must(run({"go", "build", "-o", real(t.data .. "/bin") .. "/essay-surface.new", "."}, {cwd = t.repo, timeout_ms = 120000, tail = 20}))
   replace(t.data .. "/bin/essay-surface.new.version", head.hash .. " built " .. date(now()) .. ": " .. head.subject .. "\n")
   print("built bin/essay-surface.new: " .. rel_version(t, ".new") .. ", " .. build.ms .. " ms")
+  -- The renderer for .note files, with the Roc format/roc-version pins, and
+  -- the demo note rendered by it: no note on the server may be a .note, so
+  -- the checks after the swap might never run it.
+  local pin = trim(read(t.repo .. "/format/roc-version"))
+  local renderer = real(t.data .. "/bin") .. "/render-note.new"
+  local roc_build = must(run({real("tools:roc-" .. pin .. "/roc"), "build", "format/render_note.roc", "--opt=dev", "--output=" .. renderer}, {cwd = t.repo, timeout_ms = 120000, tail = 20}))
+  local demo = must(run({renderer, read(t.repo .. "/notes/format-demo.note")}, {timeout_ms = 10000, whole = 4000000, want = "release: the renderer this release just built"}))
+  if not has_key(json_read(demo.out), "body") then fail("bin/render-note.new did not render notes/format-demo.note as a page: nothing touched") end
+  print("built bin/render-note.new with Roc " .. pin .. ", " .. roc_build.ms .. " ms; it renders notes/format-demo.note")
 end
 
 -- 4: the comments, the old log and the old pages, kept.
