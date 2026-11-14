@@ -27,10 +27,9 @@
 --   cd /home/steve && shale repos:essay-surface/scripts/release.shale data=essay-dogfood port=9301
 -- repo= is the checkout to check and build (repos:essay-surface).
 -- Give the Bash call 300 s: the full check is most of a release's time,
--- and a run killed from outside cannot put anything back. Nor can a run
--- that stops on a budget, which attempt does not catch: the steps are set
--- at about twenty times a release's own, so the checks after the old server stops
--- never run out.
+-- and a run killed from outside cannot put anything back. Steps 5 and 6
+-- are a child run (part=install), so a stop there, even on a budget, which
+-- attempt does not catch, leaves this run going to do step 7.
 -- budget: steps=50000000
 
 -- The server's argv, the one shape this script starts and looks for.
@@ -83,7 +82,7 @@ end
 -- Starts bin/essay-surface as a job, which outlives this run when the run
 -- ends, and waits until it listens (it says so only once the port is its
 -- own). A run that stops ends the jobs it started, so a new server whose
--- checks never finished goes with it. `keep` is for the old server put back
+-- checks never finished goes with the child run that started it. `keep` is for the old server put back
 -- by a failed release: that run ends by stopping, and the server must stay.
 function rel_start(t, keep)
   local job = job_start(rel_argv(t), {log = t.log, cwd = t.data, keep_on_stop = keep, want = "release: the server binary this release installed"})
@@ -291,11 +290,42 @@ function rel_put_back(t, before)
   return rel_check(t, t.dir .. "/rolled-back", before)
 end
 
+-- Steps 5 and 6 as a child run, a Shale process of its own. A child that
+-- stops, on a failed check or on a budget, ends the new server it started
+-- and exits 1; this run is still going, and puts the old server back. A
+-- child that finishes leaves its server running. Gives {ok, lines, error}.
+function rel_install_child(t, before)
+  replace(t.dir .. "/before.json", json_write(before))
+  local argv = {"shale", t.repo .. "/scripts/release.shale", "part=install", "data=" .. t.data, "port=" .. t.port, "repo=" .. t.repo, "dir=" .. t.dir}
+  if t.rollback then push(argv, "rollback=1") end
+  local r = run(argv, {cwd = ".", timeout_ms = 120000, tail = 200})
+  local own = {}
+  local stop = ""
+  for l in lines(r.out) do
+    if starts_with(l, "── stopped at ") then stop = sub(l, find(l, "at ") + 3, #l)
+    elseif not starts_with(l, "── ") then push(own, l) end
+  end
+  if not has_key(r, "code") then return {ok = false, lines = own, error = "the install run ended: " .. tostring(r.ended)} end
+  if r.code ~= 0 then return {ok = false, lines = own, error = stop} end
+  -- The new server must outlive the child that started it.
+  if #rel_running(t) ~= 1 then return {ok = false, lines = own, error = "the new server ended with the run that checked it"} end
+  return {ok = true, lines = own}
+end
+
 local t = {data = arg("data", ""), port = arg("port", 0), repo = arg("repo", "repos:essay-surface"), rollback = arg("rollback", false)}
 if t.data == "" or t.port == 0 then fail("say where: data=<folder> port=<port>, as the header shows") end
 t.addr = "127.0.0.1:" .. t.port
 t.log = t.data .. "/server.log"
 t.comments = t.data .. "/comments"
+
+-- The child run that rel_install_child launches: steps 5 and 6 alone, on
+-- the release's folder and what the old server showed.
+if arg("part", "") == "install" then
+  t.dir = arg("dir", "")
+  for l in rel_install_and_check(t, json_read(read(t.dir .. "/before.json"))) do print(l) end
+  return
+end
+
 local what = "release"
 if t.rollback then what = "rollback" end
 print(what .. ": " .. real(t.data) .. " on " .. t.addr)
@@ -353,15 +383,15 @@ before.look = rel_look(t, t.dir .. "/before", before.ids)
 print("the old server's index and " .. #rel_commented(t) .. " commented notes kept in " .. t.dir .. "/before")
 
 -- 5 and 6, and 7 when they fail.
-local done = attempt(rel_install_and_check, t, before)
+local done = rel_install_child(t, before)
+for l in done.lines do print(l) end
 if done.ok then
-  for l in done.value do print(l) end
   local rollback_cmd = "cd " .. real(".") .. " && shale repos:essay-surface/scripts/release.shale data=" .. t.data .. " port=" .. t.port .. " rollback=1"
   local said = "RELEASED"
   if t.rollback then said = "ROLLED BACK, as asked" end
   print(said .. ": running " .. rel_commit(t, "") .. " on " .. t.addr .. "; to roll back to " .. rel_commit(t, ".prev") .. ": " .. rollback_cmd)
 else
-  print("FAILED: " .. done.error .. " (line " .. done.line .. ")")
+  print("FAILED: " .. done.error)
   local back = attempt(rel_put_back, t, before)
   if not back.ok then
     print("ROLLBACK FAILED: " .. back.error .. " (line " .. back.line .. ")")
