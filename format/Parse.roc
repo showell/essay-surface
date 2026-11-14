@@ -14,6 +14,10 @@
 ##   paragraphs;
 ## - a fence of three backticks holds code, its language after the fence, and a
 ##   fence named `dot` holds a diagram;
+## - `|` starts each line of a table: its headings, then a run of dashes for
+##   each column (`|---|---|`), then its rows, each with a `|` before, between
+##   and after its cells. Every cell holds text, and every row has a cell for
+##   each heading. A `|` inside code stays in its cell;
 ## - `---` alone is a divider;
 ## - anything else is a paragraph, its lines joined by spaces. One that opens
 ##   in bold has that bold as its lead.
@@ -29,6 +33,7 @@ import Diagram
 import Note
 import NoteName
 import Phrase
+import Table
 import Text
 import WebAddress
 
@@ -54,6 +59,10 @@ Parse := [].{
 		UnclosedLink,
 		NotALinkTarget(Str),
 		NotADiagram,
+		NotATableLine,
+		NoTableDivider,
+		TableRowWidth,
+		EmptyCell,
 	]
 
 	## The note this source holds.
@@ -101,6 +110,10 @@ Parse := [].{
 				UnclosedLink => "a link is `[label](target)`, all on one paragraph"
 				NotALinkTarget(target) => "`${target}` is neither a note's name (lowercase letters, digits and hyphens) nor an http:// or https:// address"
 				NotADiagram => "a dot fence's source starts `digraph`, `graph` or `strict`"
+				NotATableLine => "every line of a table starts and ends with `|`"
+				NoTableDivider => "a table's second line is a run of dashes for each column, `|---|---|`"
+				TableRowWidth => "this line has a different number of cells than the table has headings"
+				EmptyCell => "a table cell holds words; an empty one can't be written"
 			}
 		"line ${line.to_str()}: ${why}"
 	}
@@ -191,7 +204,7 @@ joined_text = |run_lines| Str.join_with(run_lines.map(|line| line.text.trim()), 
 ## paragraph.
 starts_block : Str -> Bool
 starts_block = |text| {
-	is_marked = ["```", "#", ">", "- "].any(|opening| text.starts_with(opening))
+	is_marked = ["```", "#", ">", "- ", "|"].any(|opening| text.starts_with(opening))
 	is_marked or text.trim() == "---" or numbered_marker(text).is_ok()
 }
 
@@ -217,6 +230,8 @@ block_at = |lines, at| {
 		Ok({ block: Block.Divider, after: at + 1 })
 	} else if text.starts_with(">") {
 		quote_at(lines, at)
+	} else if text.starts_with("|") {
+		table_at(lines, at)
 	} else if text.starts_with("- ") or numbered_marker(text).is_ok() {
 		list_at(lines, at)
 	} else {
@@ -290,6 +305,87 @@ quote_at = |lines, at| {
 		}
 	}
 	Ok({ block: Block.Quote($proses), after: $i })
+}
+
+## A table: the lines from `at` to the next blank line, its headings first,
+## then its divider, then its rows.
+table_at : List(Line), U64 -> Try({ block : Block, after : U64 }, Parse.Problem)
+table_at = |lines, at| {
+	run = run_from(lines, at)
+	for line in run {
+		if !is_table_line(line.text) {
+			return Err({ line: line.number, fault: NotATableLine })
+		}
+	}
+	heading_line = line_at(run, 0)
+	column_headings = cells_of(heading_line)?
+	divider =
+		match run.get(1) {
+			Ok(line) => line
+			Err(_) => return Err({ line: heading_line.number, fault: NoTableDivider })
+		}
+	divider_cells = raw_cells(divider.text)
+	if !divider_cells.all(is_dashes) {
+		return Err({ line: divider.number, fault: NoTableDivider })
+	}
+	if divider_cells.len() != column_headings.len() {
+		return Err({ line: divider.number, fault: TableRowWidth })
+	}
+	var $rows = []
+	for line in run.drop_first(2) {
+		$rows = $rows.append(cells_of(line)?)
+	}
+	match Table.from_rows({ column_headings, rows: $rows }) {
+		Ok(table) => Ok({ block: Block.Table(table), after: at + run.len() })
+		Err(NoColumns) => crash "Parse.table_at: a table's line holds at least one cell"
+		Err(RowWidth(index)) => Err({ line: line_at(run, index + 2).number, fault: TableRowWidth })
+	}
+}
+
+## Whether a line can be a table's: `|` first and last, with room for a cell
+## between.
+is_table_line : Str -> Bool
+is_table_line = |text| {
+	trimmed = text.trim()
+	trimmed.count_utf8_bytes() >= 2 and trimmed.starts_with("|") and trimmed.ends_with("|")
+}
+
+is_dashes : Str -> Bool
+is_dashes = |cell| !cell.is_empty() and cell.to_utf8().all(|b| b == '-')
+
+## A table line's cells as written, each trimmed: split at each `|` outside
+## code, the first and last `|` taken off.
+raw_cells : Str -> List(Str)
+raw_cells = |text| {
+	inner = text.trim().drop_prefix("|").drop_suffix("|")
+	var $cells = []
+	var $current = []
+	var $in_code = False
+	for b in inner.to_utf8() {
+		if b == '`' {
+			$in_code = !$in_code
+			$current = $current.append(b)
+		} else if b == '|' and !$in_code {
+			$cells = $cells.append(utf8($current).trim())
+			$current = []
+		} else {
+			$current = $current.append(b)
+		}
+	}
+	$cells.append(utf8($current).trim())
+}
+
+## A table line's cells, each read as text.
+cells_of : Line -> Try(List(Text), Parse.Problem)
+cells_of = |line| {
+	var $cells = []
+	for raw in raw_cells(line.text) {
+		if raw.is_empty() {
+			return Err({ line: line.number, fault: EmptyCell })
+		}
+		$cells = $cells.append(text_of(scanned_spans(raw, line.number)?, line.number)?)
+	}
+	Ok($cells)
 }
 
 ## A point as the list's lines give it, before its text is read: its first
@@ -692,6 +788,20 @@ expect fault_of("# T\n\nA [b](https://a b).\n") == Err({
 expect fault_of("# T\n\nA [b](c-2) and [d](https://e.org/f).\n") == Ok({})
 expect fault_of("# T\n\n```dot\na -> b\n```\n") == Err({ line: 3, fault: NotADiagram })
 expect fault_of("# T\n\n```dot\ndigraph { a -> b }\n```\n") == Ok({})
+expect fault_of("# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n") == Ok({})
+expect fault_of("# T\n\n| a |\n|---|\n") == Ok({})
+expect fault_of("# T\n\n| `x|y` |\n|---|\n| `|` |\n") == Ok({})
+expect fault_of("# T\n\nWords.\n| a |\n") == Err({ line: 4, fault: NoBlankLineBefore })
+expect fault_of("# T\n\n| a |\n|---|\n| 1\n") == Err({ line: 5, fault: NotATableLine })
+expect fault_of("# T\n\n| a |\n|---|\nafter\n") == Err({ line: 5, fault: NotATableLine })
+expect fault_of("# T\n\n| a |\n") == Err({ line: 3, fault: NoTableDivider })
+expect fault_of("# T\n\n| a |\n| 1 |\n") == Err({ line: 4, fault: NoTableDivider })
+expect fault_of("# T\n\n| a |\n|:--|\n") == Err({ line: 4, fault: NoTableDivider })
+expect fault_of("# T\n\n| a | b |\n|---|\n") == Err({ line: 4, fault: TableRowWidth })
+expect fault_of("# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 |\n") == Err({ line: 6, fault: TableRowWidth })
+expect fault_of("# T\n\n| a | b |\n|---|---|\n| 1 | 2 | 3 |\n") == Err({ line: 5, fault: TableRowWidth })
+expect fault_of("# T\n\n| a | b |\n|---|---|\n| 1 |  |\n") == Err({ line: 5, fault: EmptyCell })
+expect fault_of("# T\n\n| a | **b |\n|---|---|\n") == Err({ line: 3, fault: UnclosedStyle })
 
 expect Parse.problem_message({
 	line: 7,

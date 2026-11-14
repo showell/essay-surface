@@ -11,6 +11,7 @@ import Note
 import NoteName
 import Parse
 import Phrase
+import Table
 import Text
 import WebAddress
 
@@ -199,7 +200,20 @@ with_block = |page, block|
 			{ ..drawn, diagram_count: drawn.diagram_count + 1 }
 		}
 		Divider => with_html(page, "<hr>\n")
-		Table(_) => crash "Page.with_block: Table has no maker yet, so no note holds one"
+		Table(table) => {
+			headings = table.column_headings()
+			rows = table.rows()
+			head = Str.join_with(headings.map(|heading| "<th>${text_html(heading)}</th>"), "")
+			body_rows = Str.join_with(rows.map(row_html), "")
+			page
+				|> with_commentable({
+					opening: "<div class=\"table-wrap\"",
+					inner: "<table>\n<thead><tr>${head}</tr></thead>\n<tbody>\n${body_rows}</tbody></table>",
+					closing: "</div>",
+					text: Str.join_with([headings].concat(rows).map(row_reading), "\n"),
+				})
+				|> with_html("\n")
+		}
 		Image(_) => crash "Page.with_block: ImageFile has no maker yet, so no note holds an image"
 		Widget(_) => crash "Page.with_block: Widget has no maker yet, so no note holds one"
 	}
@@ -236,6 +250,14 @@ with_point = |page, { prose, subpoints }| {
 		}
 	with_html(with_subpoints, "</li>\n")
 }
+
+## A table's row as the markdown renderer writes one (markdown.go's table).
+row_html : List(Text) -> Str
+row_html = |cells| "<tr>${Str.join_with(cells.map(|cell| "<td>${text_html(cell)}</td>"), "")}</tr>\n"
+
+## A table's row as a reader reads it: its cells, a `|` between them.
+row_reading : List(Text) -> Str
+row_reading = |cells| Str.join_with(cells.map(|cell| cell.reading()), " | ")
 
 prose_html : Block.Prose -> Str
 prose_html = |{ lead, text }|
@@ -339,6 +361,10 @@ every_kind =
 	\\digraph { a -> "b" }
 	\\```
 	\\
+	\\| `a|b` | **B** |
+	\\|---|---|
+	\\| 1 & 2 | [x](https://x.org) |
+	\\
 	\\---
 	\\
 	\\End.
@@ -372,8 +398,13 @@ expect
 		\\</code></pre>
 		\\<figure class="dot" data-c="13"><pre><code class="language-dot">digraph { a -&gt; &quot;b&quot; }
 		\\</code></pre></figure>
+		\\<div class="table-wrap" data-c="14"><table>
+		\\<thead><tr><th><code>a|b</code></th><th><strong>B</strong></th></tr></thead>
+		\\<tbody>
+		\\<tr><td>1 &amp; 2</td><td><a href="https://x.org">x</a></td></tr>
+		\\</tbody></table></div>
 		\\<hr>
-		\\<p data-c="14">End.</p>
+		\\<p data-c="15">End.</p>
 		\\
 expect page_of(every_kind).blocks.map(|block| block.text) == [
 	"A t & <u>",
@@ -390,6 +421,7 @@ expect page_of(every_kind).blocks.map(|block| block.text) == [
 	"a < b",
 	"x := 1",
 	"digraph { a -> \"b\" }",
+	"a|b | B\n1 & 2 | x",
 	"End.",
 ]
 expect page_of(every_kind).diagram_count == 1
@@ -405,7 +437,7 @@ expect {
 					Ok(text) => text
 					Err(_) => crash "Page's tests: a block ends at a tag's `>`, never inside a character"
 				}
-			closings = ["</h1>", "</h2>", "</h3>", "</p>", "</span>", "</pre>", "</figure>"]
+			closings = ["</h1>", "</h2>", "</h3>", "</p>", "</span>", "</pre>", "</figure>", "</div>"]
 			closings.any(|closing| before.ends_with(closing))
 		},
 	)

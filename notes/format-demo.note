@@ -15,7 +15,7 @@ A note is a title, an optional subtitle, and a list of blocks. The blocks on thi
 - **Lists,** bulleted or numbered, where each point is one paragraph and may have subpoints:
   - a subpoint is one paragraph too;
   - and it holds no list of its own.
-- **Quotes, code and diagrams,** each below.
+- **Quotes, code, tables and diagrams,** each below.
 - **A divider,** at the end.
 
 A link goes to another note by its name, like [the notes](arrays-that-are-values), or to the web, like [Roc's site](https://www.roc-lang.org/). Bold holds `code` but never *italics*, and that rule is in the types, not in a check.
@@ -36,6 +36,17 @@ The parser's entry, as it stands in `format/Parse.roc`:
 ```roc
 note : Str -> Try(Note, Parse.Problem)
 ```
+
+## The table
+
+Where a reply attaches, for each kind of block:
+
+| Block | A reply attaches to |
+|---|---|
+| A paragraph or a heading | the block |
+| A list | each point, and each subpoint |
+| A quote | each of its paragraphs |
+| A table | the whole table, as in a markdown note |
 
 ## The diagram
 
