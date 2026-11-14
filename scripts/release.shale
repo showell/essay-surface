@@ -80,10 +80,13 @@ function rel_stop(t)
   end
 end
 
--- Starts bin/essay-surface as a job, which outlives this run, and waits
--- until it listens (it says so only once the port is its own).
-function rel_start(t)
-  local job = job_start(rel_argv(t), {log = t.log, cwd = t.data, want = "release: the server binary this release installed"})
+-- Starts bin/essay-surface as a job, which outlives this run when the run
+-- ends, and waits until it listens (it says so only once the port is its
+-- own). A run that stops ends the jobs it started, so a new server whose
+-- checks never finished goes with it. `keep` is for the old server put back
+-- by a failed release: that run ends by stopping, and the server must stay.
+function rel_start(t, keep)
+  local job = job_start(rel_argv(t), {log = t.log, cwd = t.data, keep_on_stop = keep, want = "release: the server binary this release installed"})
   local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
   if w.ended ~= "found" then
     job_stop(job)
@@ -236,7 +239,7 @@ function rel_install_and_check(t, before)
     rel_move_bin(t, ".new", "")
   end
   create(t.dir .. "/installed", rel_version(t, "") .. "\n")
-  rel_start(t)
+  rel_start(t, false)
   print("started " .. rel_version(t, ""))
   return rel_check(t, t.dir .. "/after", before)
 end
@@ -281,7 +284,7 @@ function rel_put_back(t, before)
       print("put back " .. lost .. " lost comments in " .. c.file .. " from " .. kept)
     end
   end
-  rel_start(t)
+  rel_start(t, true)
   print("started " .. rel_version(t, ""))
   return rel_check(t, t.dir .. "/rolled-back", before)
 end
