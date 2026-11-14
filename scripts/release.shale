@@ -124,7 +124,7 @@ end
 -- The index and every commented note, fetched by one curl into dir;
 -- {status = {name = code}, names, places = {note = {id = place}}}. A
 -- comment's place is the block it follows, "orphan", or "missing".
-function rel_look(t, dir, from)
+function rel_look(t, dir, ids_before)
   mkdir(dir)
   local base = "http://" .. t.addr
   local argv = {"curl", "-s", "--max-time", "20", "-w", "%{http_code} %{url_effective}\\n", "-o", real(dir) .. "/index.html", base .. "/"}
@@ -145,23 +145,23 @@ function rel_look(t, dir, from)
   for c in commented do
     local page = read_or(dir .. "/" .. c.note .. ".html", "")
     local orphans = find(page, "<section class=\"orphans\">")
-    local fors = {}
+    local groups = {}
     local mark = "<div class=\"cmts\" data-for=\""
-    local f = find(page, mark)
-    while f ~= nil do
-      local from_at = f + #mark
-      push(fors, {at = f, group = sub(page, from_at, find(page, "\"", from_at) - 1)})
-      f = find(page, mark, from_at)
+    local mark_at = find(page, mark)
+    while mark_at ~= nil do
+      local from_at = mark_at + #mark
+      push(groups, {at = mark_at, block = sub(page, from_at, find(page, "\"", from_at) - 1)})
+      mark_at = find(page, mark, from_at)
     end
     local at = {}
-    for id in get(from, c.note, {}) do
+    for id in get(ids_before, c.note, {}) do
       local pos = find(page, "<div class=\"cmt\" id=\"c-" .. id .. "\">")
       local place = "missing"
       if pos ~= nil and orphans ~= nil and pos > orphans then
         place = "orphan"
       elseif pos ~= nil then
-        for f in fors do
-          if f.at < pos then place = "block " .. f.group end
+        for g in groups do
+          if g.at < pos then place = "block " .. g.block end
         end
       end
       at[id] = place
@@ -196,9 +196,8 @@ function rel_check(t, dir, before)
   local n = 0
   for c in rel_commented(t) do
     local code = get(now.status, now.base .. "/notes/" .. c.note, 0)
-    if code ~= get(before.look.status, before.look.base .. "/notes/" .. c.note, 0) then
-      fail("the note " .. c.note .. ": " .. code .. " now, " .. get(before.look.status, before.look.base .. "/notes/" .. c.note, 0) .. " before")
-    end
+    local code_before = get(before.look.status, before.look.base .. "/notes/" .. c.note, 0)
+    if code ~= code_before then fail("the note " .. c.note .. ": " .. code .. " now, " .. code_before .. " before") end
     for id in get(before.ids, c.note, {}) do
       local was = before.look.places[c.note][id]
       local is = now.places[c.note][id]
@@ -218,22 +217,27 @@ function rel_check(t, dir, before)
   return out
 end
 
--- Steps 5 and 6: the installed marker says, for a rollback, whether the
--- binaries were moved.
 -- The log of the server just stopped, kept under name in the release's
 -- folder: the next job on the log starts it empty.
 function rel_keep_log(t, name)
   if exists(t.log) then must(run({"cp", "-p", real(t.log), real(t.dir) .. "/" .. name}, {timeout_ms = 10000, tail = 5})) end
 end
 
+-- bin/essay-surface and bin/essay-surface.prev trade places.
+function rel_swap_prev(t)
+  rel_move_bin(t, "", ".swap")
+  rel_move_bin(t, ".prev", "")
+  rel_move_bin(t, ".swap", ".prev")
+end
+
+-- Steps 5 and 6: the installed marker says, for a rollback, whether the
+-- binaries were moved.
 function rel_install_and_check(t, before)
   rel_stop(t)
   rel_keep_log(t, "server.log")
   print("stopped the old server; its log kept")
   if t.rollback then
-    rel_move_bin(t, "", ".swap")
-    rel_move_bin(t, ".prev", "")
-    rel_move_bin(t, ".swap", ".prev")
+    rel_swap_prev(t)
   else
     rel_move_bin(t, "", ".prev")
     rel_move_bin(t, ".new", "")
@@ -252,9 +256,7 @@ function rel_put_back(t, before)
   -- there is not installed. A rollback's swap has its marker.
   local b = t.data .. "/bin/essay-surface"
   if t.rollback and exists(t.dir .. "/installed") then
-    rel_move_bin(t, "", ".swap")
-    rel_move_bin(t, ".prev", "")
-    rel_move_bin(t, ".swap", ".prev")
+    rel_swap_prev(t)
   elseif not t.rollback and exists(b .. ".new") then
     if not exists(b) then rel_move_bin(t, ".prev", "") end
   elseif not t.rollback then
@@ -325,9 +327,9 @@ if not t.rollback then
   print("full check: SAFE TO SHIP, " .. full.ms .. " ms")
   -- 3: the build, beside the old binary.
   local head = git_log(t.repo, {n = 1})[1]
-  local b = must(run({"go", "build", "-o", real(t.data .. "/bin") .. "/essay-surface.new", "."}, {cwd = t.repo, timeout_ms = 120000, tail = 20}))
+  local build = must(run({"go", "build", "-o", real(t.data .. "/bin") .. "/essay-surface.new", "."}, {cwd = t.repo, timeout_ms = 120000, tail = 20}))
   replace(t.data .. "/bin/essay-surface.new.version", head.hash .. " built " .. date(now()) .. ": " .. head.subject .. "\n")
-  print("built bin/essay-surface.new: " .. rel_version(t, ".new") .. ", " .. b.ms .. " ms")
+  print("built bin/essay-surface.new: " .. rel_version(t, ".new") .. ", " .. build.ms .. " ms")
 end
 
 -- 4: the comments, the old log and the old pages, kept.
@@ -354,10 +356,10 @@ print("the old server's index and " .. #rel_commented(t) .. " commented notes ke
 local done = attempt(rel_install_and_check, t, before)
 if done.ok then
   for l in done.value do print(l) end
-  local back = "cd " .. real(".") .. " && shale repos:essay-surface/scripts/release.shale data=" .. t.data .. " port=" .. t.port .. " rollback=1"
+  local rollback_cmd = "cd " .. real(".") .. " && shale repos:essay-surface/scripts/release.shale data=" .. t.data .. " port=" .. t.port .. " rollback=1"
   local said = "RELEASED"
   if t.rollback then said = "ROLLED BACK, as asked" end
-  print(said .. ": running " .. rel_commit(t, "") .. " on " .. t.addr .. "; to roll back to " .. rel_commit(t, ".prev") .. ": " .. back)
+  print(said .. ": running " .. rel_commit(t, "") .. " on " .. t.addr .. "; to roll back to " .. rel_commit(t, ".prev") .. ": " .. rollback_cmd)
 else
   print("FAILED: " .. done.error .. " (line " .. done.line .. ")")
   local back = attempt(rel_put_back, t, before)
