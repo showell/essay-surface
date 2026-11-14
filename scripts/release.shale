@@ -301,9 +301,10 @@ function rel_install_child(t, before)
   local r = run(argv, {cwd = ".", timeout_ms = 120000, tail = 200})
   local own = {}
   local stop = ""
+  -- The child's own lines end at its stop line, which its call stack follows.
   for l in lines(r.out) do
-    if starts_with(l, "── stopped at ") then stop = sub(l, find(l, "at ") + 3, #l)
-    elseif not starts_with(l, "── ") then push(own, l) end
+    if starts_with(l, "── stopped at ") then stop = sub(l, find(l, "at ") + 3, #l) end
+    if stop == "" and not starts_with(l, "── ") then push(own, l) end
   end
   if not has_key(r, "code") then return {ok = false, lines = own, error = "the install run ended: " .. tostring(r.ended)} end
   if r.code ~= 0 then return {ok = false, lines = own, error = stop} end
