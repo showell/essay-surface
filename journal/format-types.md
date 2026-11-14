@@ -168,3 +168,11 @@ By the files' times: the prompt was committed at 13:40:41 and this journal start
 The report is `essay-repl-server/notes/essay-format-types.md`: the types with what each is for and what it leaves out, the table of what is dropped by notes, the file name, and three questions. Writing it, I went back over each count against the survey's output rather than my memory of it. The orchestrator publishes it; I don't commit it.
 
 The README names `scripts/features.shale` and `format/` in two sentences. The commit holds `format/` (ten type modules and `roc-version`), `scripts/features.shale`, the README and this journal.
+
+## Steve's reply
+
+Steve read the proposal on the surface, along with the orchestrator's short read of it. He replied:
+
+> Looks good! The honest truth is that I jumped right to the file with the Roc types. I skimmed everything, especially the prose. The Roc types look solid enough to start building out a quick demo with.
+
+He accepted the orchestrator's three recommendations: Note and Block stay nominal, a list point holds one paragraph, and the divider stays.
