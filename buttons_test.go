@@ -30,7 +30,7 @@ import (
 )
 
 // The least opacity a resting reply button may show at. comments.css has
-// .6 on a wide screen and .5 on a narrow one; Tuesday's had 0.
+// .6 on a wide screen and .5 on a narrow one; Session 2's had 0.
 const leastOpacity = 0.5
 
 type cssRule struct {
@@ -488,7 +488,7 @@ func TestReplyButtonsShow(t *testing.T) {
 // is skipped.
 func TestReplyButtonFixtures(t *testing.T) {
 	want := map[string]string{
-		"tuesday.css":          "a paragraph's reply button with no comments, 80rem wide, light: opacity 0, under 0.5",
+		"hidden-at-rest.css":   "a paragraph's reply button with no comments, 80rem wide, light: opacity 0, under 0.5",
 		"narrow-none.css":      "a code block's reply button with no comments, 50rem wide, light: display:none on its button",
 		"host-hidden.css":      "a list item's reply button with comments, 80rem wide, dark: visibility:hidden",
 		"faint-article.css":    "a heading's reply button with no comments, 80rem wide, light: opacity 0.4",

@@ -1,6 +1,6 @@
 Today we ship, and shipping should be boring.
 
-I've been using the new surface for real since Tuesday, replying to essays on it, and every time we've changed the server I've swapped the running one by hand: build, stop the old one, start the new one, check a page. That's exactly the kind of chore I want a script for. Write `scripts/release.shale`, which does a release the same way every time:
+I've been using the new surface for real since Session 2, replying to essays on it, and every time we've changed the server I've swapped the running one by hand: build, stop the old one, start the new one, check a page. That's exactly the kind of chore I want a script for. Write `scripts/release.shale`, which does a release the same way every time:
 
 - It runs the full check first, and stops unless it says SAFE TO SHIP.
 - It builds the new server next to the old one and keeps the old binary.

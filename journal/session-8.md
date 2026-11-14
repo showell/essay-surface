@@ -1,6 +1,6 @@
-# Format types: the Roc types for a note format of our own
+# Session 8: the Roc types for a note format of our own
 
-The prompt is `journal/prompts/format-types.md`: read the real notes, then propose the Roc types for a note in a new format (its blocks, the text inside them, a diagram block drawn from a dot description, room for widgets later), say for each type what it's for and what it leaves out, count what the real notes use that the format would drop, and name the files. No Roc functions and no Go. The report is a note Steve replies to.
+The prompt is `journal/prompts/session-8.md`: read the real notes, then propose the Roc types for a note in a new format (its blocks, the text inside them, a diagram block drawn from a dot description, room for widgets later), say for each type what it's for and what it leaves out, count what the real notes use that the format would drop, and name the files. No Roc functions and no Go. The report is a note Steve replies to.
 
 ## Orienting
 
@@ -29,7 +29,7 @@ for p in ns do print(count_lines(p), p) end
 3197	notes/safari-tutorial-draft.md
 ```
 
-The repo's `notes/` holds 12 notes, about 11,000 lines. Monday's journal says they're a sample copied from `essay-repl-server/notes/`, and the links journal counted the real notes there (514 then). So "my real notes in `notes/`" can mean either. I read the 12 here as the sample the prompt points at, and counted every feature over the whole folder in essay-repl-server, which is what Steve actually writes:
+The repo's `notes/` holds 12 notes, about 11,000 lines. Session 1's journal says they're a sample copied from `essay-repl-server/notes/`, and Session 7's journal counted the real notes there (514 then). So "my real notes in `notes/`" can mean either. I read the 12 here as the sample the prompt points at, and counted every feature over the whole folder in essay-repl-server, which is what Steve actually writes:
 
 ```shale
 for l in git_log("", {n = 12}) do print(l.hash, l.date, l.subject) end
@@ -51,7 +51,7 @@ essay-repl-server notes: 522
 
 A first try at the git log of `notes/` stopped on `git_log(..., {fields = nil})`: a map can't hold nil. I ran `git log` through `run` instead, which showed the 12 came in with the first commit.
 
-I read `README.md`, `markdown.go` (whole), `journal/links.md`, roc-apps `CLAUDE.md` and `docs/roc-style.md` with the Read tool.
+I read `README.md`, `markdown.go` (whole), `journal/session-7.md`, roc-apps `CLAUDE.md` and `docs/roc-style.md` with the Read tool.
 
 ## Reading the notes
 

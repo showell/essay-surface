@@ -1,6 +1,6 @@
-# Friday: a release script
+# Session 5: a release script
 
-Today's prompt (`journal/prompts/friday.md`): write `scripts/release.shale`, which runs the full check, builds beside the old binary, copies the comments somewhere safe, swaps the servers, checks the index, a note, a note with comments and every comment from before, and puts the old server back if any check fails. Prove it on 9300 with a copy of the human's data, including one release that fails on purpose. Don't touch the live server on 9301.
+Today's prompt (`journal/prompts/session-5.md`): write `scripts/release.shale`, which runs the full check, builds beside the old binary, copies the comments somewhere safe, swaps the servers, checks the index, a note, a note with comments and every comment from before, and puts the old server back if any check fails. Prove it on 9300 with a copy of the human's data, including one release that fails on purpose. Don't touch the live server on 9301.
 
 The report is at the end.
 
@@ -21,10 +21,10 @@ for c in git_log("", {n = 25}) do print(c.hash, c.subject) end
 print(json_write(git_status("")))
 ```
 
-Why: the repo's files and where the history stands. Clean tree, HEAD `7f3fb5f` (the Friday prompt).
+Why: the repo's files and where the history stands. Clean tree, HEAD `7f3fb5f` (the Session 5 prompt).
 
 ```shale
-for p in {"journal/monday.md","journal/tuesday.md","journal/wednesday.md","journal/thursday.md"} do
+for p in {"journal/session-1.md","journal/session-2.md","journal/session-3.md","journal/session-4.md"} do
   for m in grep(p, "## ") do print(p .. ":" .. m.line, m.text) end
 end
 print(read(".gitignore"))
@@ -34,8 +34,8 @@ Why: to find each day's report. I read all four with the Read tool, then the pre
 
 What I took from them for today:
 
-- The live server is `/home/steve/essay-dogfood/bin/essay-surface -notes /home/steve/essay-dogfood/notes -addr 127.0.0.1:9301` (Wednesday's and Thursday's last checks print it). It passes no `-comments`, so its comments are `~/essay-dogfood/comments`, beside the notes.
-- Monday's trap: a run that stops after `job_start` leaves the server running.
+- The live server is `/home/steve/essay-dogfood/bin/essay-surface -notes /home/steve/essay-dogfood/notes -addr 127.0.0.1:9301` (Session 3's and Session 4's last checks print it). It passes no `-comments`, so its comments are `~/essay-dogfood/comments`, beside the notes.
+- Session 1's trap: a run that stops after `job_start` leaves the server running.
 - `full.shale` ends `SAFE TO SHIP` or `NOT SAFE`, and exits 1 on the second.
 
 ```shale
@@ -57,10 +57,10 @@ for p in glob("scripts/*.shale") do for m in grep(p, "930") do print(p .. ":" ..
 for p in glob("*.go") do for m in grep(p, "930") do print(p .. ":" .. m.line, m.text) end end
 for p in glob("journal/*.md") do for m in grep(p, "behind") do print(p .. ":" .. m.line, sub(m.text, 1, 200)) end end
 print(date(now()))
-print(json_write(ls("scratch:essay-friday-data")))
-print(#ls("scratch:essay-friday-data/notes"))
-for f in ls("scratch:essay-friday-data/comments") do print(f, stat("scratch:essay-friday-data/comments/" .. f).size, count_lines("scratch:essay-friday-data/comments/" .. f)) end
-print(exists("scratch:essay-friday-data/notes/.git"))
+print(json_write(ls("scratch:essay-session-5-data")))
+print(#ls("scratch:essay-session-5-data/notes"))
+for f in ls("scratch:essay-session-5-data/comments") do print(f, stat("scratch:essay-session-5-data/comments/" .. f).size, count_lines("scratch:essay-session-5-data/comments/" .. f)) end
+print(exists("scratch:essay-session-5-data/notes/.git"))
 print(exists("scratch:.shale"))
 ```
 
@@ -86,13 +86,13 @@ false
 
 ```shale
 for p in glob("journal/*.md") do for w in {"left up", "still up", "still runs", "job_start", "trap"} do for m in grep(p, w) do print(p .. ":" .. m.line, sub(m.text, 1, 220)) end end end
-for p in glob("scratch:essay-friday-data/comments/*") do print(p) print(read(p)) end
+for p in glob("scratch:essay-session-5-data/comments/*") do print(p) print(read(p)) end
 ```
 
 Why: the job traps the earlier days hit, and the human's seven real replies (all made today, in three files).
 
 ```shale
-local d = fresh_dir("", "friday-probe")
+local d = fresh_dir("", "session-5-probe")
 print(d)
 replace(d .. "/a", "hello\n")
 local r = run({"cp", "-p", real(d .. "/a"), real(d) .. "/b"}, {timeout_ms = 5000, tail = 5})
@@ -123,7 +123,7 @@ for p in procs() do
   if p.name == "essay-surface" then print("running before: pid " .. p.pid .. ": " .. p.args) end
 end
 if exists(T) then remove_tree(T) end
-must(run({"cp", "-a", real("scratch:essay-friday-data"), real("scratch:") .. "/essay-trial"}, {timeout_ms = 30000, tail = 5}))
+must(run({"cp", "-a", real("scratch:essay-session-5-data"), real("scratch:") .. "/essay-trial"}, {timeout_ms = 30000, tail = 5}))
 mkdir(T .. "/bin")
 local b = must(run({"go", "build", "-o", real(T .. "/bin") .. "/essay-surface", "."}, {timeout_ms = 120000, tail = 20}))
 print("built HEAD " .. git_head("") .. " in " .. b.ms .. " ms")
@@ -331,7 +331,7 @@ print(json_write(ls(T .. "/bin")))
 mkdir("essay-old")
 must(run({"cp", "-p", real(T .. "/bin/essay-surface.prev"), real("essay-old") .. "/essay-surface-7f3fb5f"}, {timeout_ms = 10000, tail = 5}))
 remove_tree(T)
-must(run({"cp", "-a", real("essay-friday-data"), real(".") .. "/essay-trial"}, {timeout_ms = 30000, tail = 5}))
+must(run({"cp", "-a", real("essay-session-5-data"), real(".") .. "/essay-trial"}, {timeout_ms = 30000, tail = 5}))
 mkdir(T .. "/bin")
 must(run({"cp", "-p", real("essay-old/essay-surface-7f3fb5f"), real(T .. "/bin") .. "/essay-surface"}, {timeout_ms = 10000, tail = 5}))
 local job = job_start({real(T .. "/bin/essay-surface"), "-notes", real(T .. "/notes"), "-addr", "127.0.0.1:9300"}, {log = T .. "/server.log", want = "trial: the old server, as the live one is started"})
@@ -381,7 +381,7 @@ for p in procs() do
 end
 if exists(T .. "/server.log.job") then print(json_write(job_wait(T .. "/server.log.job", {timeout_ms = 10000}))) end
 remove_tree(T)
-must(run({"cp", "-a", real("essay-friday-data"), real(".") .. "/essay-trial"}, {timeout_ms = 30000, tail = 5}))
+must(run({"cp", "-a", real("essay-session-5-data"), real(".") .. "/essay-trial"}, {timeout_ms = 30000, tail = 5}))
 mkdir(T .. "/bin")
 must(run({"cp", "-p", real("essay-old/essay-surface-7f3fb5f"), real(T .. "/bin") .. "/essay-surface"}, {timeout_ms = 10000, tail = 5}))
 local job = job_start({real(T .. "/bin/essay-surface"), "-notes", real(T .. "/notes"), "-addr", "127.0.0.1:9300"}, {log = T .. "/server.log", want = "trial: the old server, as the live one is started"})
@@ -492,8 +492,8 @@ for p in procs() do if p.name == "essay-surface" then print("pid " .. p.pid .. "
 ```shale
 -- after trial 3: what is left, and the comments against the data the trial started from
 for d in ls("essay-trial/releases") do print(d, json_write(ls("essay-trial/releases/" .. d))) end
-for f in ls("essay-friday-data/comments") do
-  print(f, read("essay-friday-data/comments/" .. f) == read("essay-trial/comments/" .. f) and "same as the data's" or "DIFFERS")
+for f in ls("essay-session-5-data/comments") do
+  print(f, read("essay-session-5-data/comments/" .. f) == read("essay-trial/comments/" .. f) and "same as the data's" or "DIFFERS")
 end
 for p in procs() do if p.name == "essay-surface" then print("pid " .. p.pid .. ": " .. p.args) end end
 local d = "essay-trial/releases/" .. ls("essay-trial/releases")[1]
@@ -683,3 +683,25 @@ cd /home/steve && shale repos:essay-surface/scripts/release.shale data=essay-dog
 Its last line is `RELEASED: running <commit> on 127.0.0.1:9301; to roll back ...`, or a stop that starts `ROLLED BACK:`. To go back afterwards: `cd /home/steve && shale repos:essay-surface/scripts/release.shale data=essay-dogfood port=9301 rollback=1`.
 
 **Commits today:** `d48216f` (listening once the port is its own; the checks on 9310), `fc558f2` (release.shale), `749242e` (the old log kept after the stop), and this journal with the README.
+
+## The live release
+
+The first real release, on Steve's own server, copied here from the essay note written the same day, which was until now its only record:
+
+```text
+release: /home/steve/essay-dogfood on 127.0.0.1:9301
+running: pid 2484343, unknown (built before release.shale)
+   == fast: PASS, 3558 ms, cpu 3457 ms
+   == race: PASS, 2740 ms, cpu 1677 ms
+   == anchoring: PASS, 12281 ms, cpu 11753 ms
+   == audit: PASS, 1350 ms, cpu 602 ms
+   == dates: PASS, 1698 ms, cpu 351 ms
+   == bench: PASS, 4925 ms, cpu 1636 ms
+full check: SAFE TO SHIP, 26562 ms
+built bin/essay-surface.new: 92fb48b ..., 926 ms
+comments kept: 3 files, 7 comments, in essay-dogfood/releases/2026-11-13T175107Z/comments, each compared
+stopped the old server; its log kept
+ok: the index, 508 notes, the same as before
+ok: all 7 comments from before on their pages and in their files
+RELEASED: running 92fb48b on 127.0.0.1:9301; to roll back to unknown: ... rollback=1
+```

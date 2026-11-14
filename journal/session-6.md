@@ -1,4 +1,4 @@
-# Saturday: the release as a child run
+# Session 6: the release as a child run
 
 This journal was written by the orchestrator from the agent's report. That agent polished the scripts and made the release's swap a child run (commits `cea25e7` to `8218ffc`). Its trial outputs are quoted as it reported them.
 

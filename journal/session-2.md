@@ -1,6 +1,6 @@
-# Tuesday: comments that stay attached
+# Session 2: comments that stay attached
 
-The prompt is `journal/prompts/tuesday.md`: comments on any paragraph, which stay with their paragraph through edits and moves and are shown as orphans (never lost) when it is deleted; a plain-JavaScript front end that works on a phone; comments stored as files I choose and defend; a page with comments as fast as one without, measured; Go tests for the anchoring; a report.
+The prompt is `journal/prompts/session-2.md`: comments on any paragraph, which stay with their paragraph through edits and moves and are shown as orphans (never lost) when it is deleted; a plain-JavaScript front end that works on a phone; comments stored as files I choose and defend; a page with comments as fast as one without, measured; Go tests for the anchoring; a report.
 
 All shell work is Shale. Each script is verbatim, with why I ran it and what it said, stops and retries included. Where a script carried a long Go text into an `edit`, I've cut the Go and said where it is (the commit), since the Go is in the repo; the Shale around it is as it ran.
 

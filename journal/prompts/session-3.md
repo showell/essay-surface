@@ -1,6 +1,6 @@
 Two jobs today: a faster index, and a way of working we can keep.
 
-**The index.** Monday's numbers showed where its time goes: checking every note's file on every request. Make the server hear about changes instead of looking for them. While you're there, take a note's date from the note or from git, not from the file's modified time, since a fresh clone resets those. Measure before and after.
+**The index.** Session 1's numbers showed where its time goes: checking every note's file on every request. Make the server hear about changes instead of looking for them. While you're there, take a note's date from the note or from git, not from the file's modified time, since a fresh clone resets those. Measure before and after.
 
 **The checks.** Over two days we've collected scripts: `check.shale`, `bench.shale`, `audit.shale` and `comments_smoke.shale`, and yesterday's report lists what to check every time. Now make them easy to run at the right moment, so nobody has to remember the list:
 

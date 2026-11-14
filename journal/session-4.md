@@ -1,6 +1,6 @@
-# Thursday: every stage seen red, and the reply buttons checked
+# Session 4: every stage seen red, and the reply buttons checked
 
-The prompt is `journal/prompts/thursday.md`. Yesterday's full check says SAFE TO SHIP; today is about believing it. For each stage of `full.shale`, put in the one fault it exists to catch, run it, watch it go red, and take the fault out. That technique is old and has names: **fault seeding**, or **mutation testing** when it's done by machine. We also call a seeded fault a **plant**. Then keep the cheap ones as permanent **known-bad and known-good fixtures** (we call those plants too): small inputs a check must reject or accept, run every time, as data the check reads, never a build of their own. `full.shale` stays under thirty seconds. And Tuesday's failure gets a check: a page that hides its reply buttons must fail, without a browser if that can be done honestly.
+The prompt is `journal/prompts/session-4.md`. Yesterday's full check says SAFE TO SHIP; today is about believing it. For each stage of `full.shale`, put in the one fault it exists to catch, run it, watch it go red, and take the fault out. That technique is old and has names: **fault seeding**, or **mutation testing** when it's done by machine. We also call a seeded fault a **plant**. Then keep the cheap ones as permanent **known-bad and known-good fixtures** (we call those plants too): small inputs a check must reject or accept, run every time, as data the check reads, never a build of their own. `full.shale` stays under thirty seconds. And Session 2's failure gets a check: a page that hides its reply buttons must fail, without a browser if that can be done honestly.
 
 The rules I held to for every plant: one fault at a time, put in by an `edit` inside the script that runs the stage, taken out by the reverse `edit` in the same script, then `git diff` empty and `fast.shale` PASS before the next one. No planted fault is ever committed.
 
@@ -51,7 +51,7 @@ watch.go	90
 []
 ```
 
-The one change since Wednesday, the merge:
+The one change since Session 3, the merge:
 
 ```shale
 -- what the reply-button merge changed
@@ -66,7 +66,7 @@ print(git_diff("", {range = "0b39136..9d70b61"}))
 +    btn.textContent = n ? String(n) : "reply";
 ```
 
-So Tuesday's page had `opacity:0` on the resting button, and only `:hover`, `:focus-visible` or `.has` (a block with comments) raised it. That CSS, from `0b39136`, is the known-bad input the new check must reject.
+So Session 2's page had `opacity:0` on the resting button, and only `:hover`, `:focus-visible` or `.has` (a block with comments) raised it. That CSS, from `0b39136`, is the known-bad input the new check must reject.
 
 ## Before: full.shale as it stands
 
@@ -92,7 +92,7 @@ box: load 2.38 on 2 CPUs; notes: /home/steve/showell_repos/essay-repl-server/not
 SAFE TO SHIP
 ```
 
-**Before: 30.9 s wall and 24.1 s of CPU, on a box at load 2.4 to 3.1 on two CPUs.** Wednesday's quiet runs were 27.6 and 29.1 s. CPU is the steady measure here, since wall time on this box depends on what else is running.
+**Before: 30.9 s wall and 24.1 s of CPU, on a box at load 2.4 to 3.1 on two CPUs.** Session 3's quiet runs were 27.6 and 29.1 s. CPU is the steady measure here, since wall time on this box depends on what else is running.
 
 ## The stages, each seen red
 
@@ -186,7 +186,7 @@ after: exit 0; ... fast: PASS
 
 ### fast: test, and the first hole
 
-For the tests I wanted a fault they had not been written around. Wednesday's plant was the renderer; today's is the comment's name, written to the page without escaping. Tuesday's tests check the text's escaping, and the smoke checks it again, but nothing I could find checked the name.
+For the tests I wanted a fault they had not been written around. Session 3's plant was the renderer; today's is the comment's name, written to the page without escaping. Session 2's tests check the text's escaping, and the smoke checks it again, but nothing I could find checked the name.
 
 ```shale
 -- plant 4, fast's test stage: a comment's name written to the page unescaped (the smoke checks only the text's escaping). Which test sees it?
@@ -487,7 +487,7 @@ The audit names the four real notes that broke. `TestRender` has an aligned tabl
 
 ### dates
 
-Wednesday's dates plant was git never asked. Today's is subtler, and something someone might do on purpose: an undated note takes the later of its last commit and its file's time, "so it shows its latest edit".
+Session 3's dates plant was git never asked. Today's is subtler, and something someone might do on purpose: an undated note takes the later of its last commit and its file's time, "so it shows its latest edit".
 
 ```shale
 -- plant 9, the dates stage: an undated note takes the later of its last commit and its file's time (a plausible "show the latest edit"), so a fresh clone, every file new, re-dates it. full's dates argv; then fast
@@ -519,7 +519,7 @@ git diff: empty
 after: exit 0; ... fast: PASS
 ```
 
-The count line still says "0 from their files", since the source is still git; only the comparison of the two indexes caught it, naming a real note. (Git took 82 ms today against 821 ms this morning: the notes repo looks packed now, which Wednesday's report suggested.)
+The count line still says "0 from their files", since the source is still git; only the comparison of the two indexes caught it, naming a real note. (Git took 82 ms today against 821 ms this morning: the notes repo looks packed now, which Session 3's report suggested.)
 
 ### bench
 
@@ -552,7 +552,7 @@ after: exit 0; ... fast: PASS
 
 ## Two additions from the human, mid-run
 
-Halfway through, two notes came in, replying to Wednesday's report:
+Halfway through, two notes came in, replying to Session 3's report:
 
 1. The comments folder's parent must exist at start, and should be a defensive check: if it's missing, the server stops with one clear message naming the path, and never makes the folder.
 2. Phones are out of scope. Say so in the README in one plain sentence, and take the phone eye test off the by-hand list. The desktop browser eye test stays.
@@ -636,13 +636,13 @@ edit scripts/full.shale: 1 hunk, -1 +1 lines
 
 ## The reply buttons, checked without a browser
 
-Tuesday's failure was CSS: `.cbtn{...opacity:0...}` on the resting button, raised only by `:hover`, `:focus-visible` or `.has`. Every check passed because none of them looks at what the CSS does. Without a browser, the honest version is to work the cascade out by hand for the one element that matters, on the CSS the page is actually served with. That's `buttons_test.go` (written whole with my file writer; commit `bb14884`):
+Session 2's failure was CSS: `.cbtn{...opacity:0...}` on the resting button, raised only by `:hover`, `:focus-visible` or `.has`. Every check passed because none of them looks at what the CSS does. Without a browser, the honest version is to work the cascade out by hand for the one element that matters, on the CSS the page is actually served with. That's `buttons_test.go` (written whole with my file writer; commit `bb14884`):
 
 - **The input** is a real note page from the store's handler, with a paragraph, a heading, a list item and a code block, and every `<style>` in it, in order: the page's own style and `comments.css` as embedded.
 - **The places** are where `comments.js` puts a button: inside a `p.chost` or `h2.chost`, inside the `span.ct` of an `li.chost`, and in a `div.cpin` after a code block. Each is the chain of elements from `html` down to `button.cbtn[type=button]`, with and without `.has` (a block with comments). The test also requires those class names to still be in `comments.js` and the renderer. Otherwise a renamed class would make it pass by matching nothing.
 - **The states** are every desktop state the CSS tells apart: one width on each side of every width a media query names (30, 31, 50, 51 and 80rem), light and dark. A desktop has hover, so `@media (hover:none)` never holds.
 - **The cascade** is selectors (tags, classes, attributes, `:root`, the child and descendant combinators), specificity, then source order. A resting button is not hovered, focused or active, so a rule with any of those never applies.
-- **Hidden** means `display:none` on the button or any box around it, `visibility:hidden` inherited or its own, or the opacities from the button out to `html` multiplying to less than **0.5**. Today's CSS has .6 on a wide screen and .5 on a narrow one, and Tuesday's had 0.
+- **Hidden** means `display:none` on the button or any box around it, `visibility:hidden` inherited or its own, or the opacities from the button out to `html` multiplying to less than **0.5**. Today's CSS has .6 on a wide screen and .5 on a narrow one, and Session 2's had 0.
 - **What it refuses rather than guesses at:** any at-rule other than `@media`, a nested `@media`, `!important`, a pseudo-class beyond those four, an unknown media feature. A stop, not a skip.
 - **What it does not see**, said in its header: a script that stops making the buttons (fast parses the script, but nothing runs it), a button clipped or pushed off the page, and colours too faint to read.
 
@@ -652,7 +652,7 @@ Tuesday's failure was CSS: `.cbtn{...opacity:0...}` on the resting button, raise
 
 | fixture | kind | what it must say |
 |---|---|---|
-| `tuesday.css` | known-bad, the real one from `0b39136` | opacity 0 on a wide screen |
+| `hidden-at-rest.css` | known-bad, the real one from `0b39136` | opacity 0 on a wide screen |
 | `narrow-none.css` | known-bad | `display:none` on the pinned button at 50rem and under |
 | `host-hidden.css` | known-bad | `visibility:hidden` inherited from the `li` |
 | `faint-article.css` | known-bad | .8 on `article` times .5 on the button is 0.4, under the floor though each passes alone |
@@ -661,9 +661,9 @@ Tuesday's failure was CSS: `.cbtn{...opacity:0...}` on the resting button, raise
 | `hover-only-hides.css` | known-good | only a hovered host's button is hidden |
 
 ```shale
--- the known-bad and known-good sheets for the reply-button check; Tuesday's is the real one, from git
+-- the known-bad and known-good sheets for the reply-button check; Session 2's is the real one, from git
 mkdir("testdata/buttons")
-create("testdata/buttons/tuesday.css", git_show("", "0b39136:comments.css"))
+create("testdata/buttons/hidden-at-rest.css", git_show("", "0b39136:comments.css"))
 create("testdata/buttons/narrow-none.css", "/* A narrow window drops the pinned buttons. */\n@media (max-width:50rem){.cpin>.cbtn{display:none}}\n")
 create("testdata/buttons/host-hidden.css", "/* A list item hides what it holds; the button inherits it. */\nli.chost{visibility:hidden}\n")
 create("testdata/buttons/faint-article.css", "/* Each opacity passes alone; together they are 0.4. */\narticle{opacity:.8}\n.cbtn{opacity:.5}\n")
@@ -685,7 +685,7 @@ ok  	essay-surface	0.038s
 Green on its first run, which proves nothing yet. So I made the test log what each fixture said, then planted the fault the check exists for:
 
 ```shale
--- what each fixture said; then the plant the check exists for: Tuesday's opacity:0 back on the resting button in comments.css, through fast
+-- what each fixture said; then the plant the check exists for: Session 2's opacity:0 back on the resting button in comments.css, through fast
 local v = run({"go", "test", "-count=1", "-run", "TestReplyButtonFixtures", "-v", "."}, {timeout_ms = 60000, tail = 20, re = "buttons_test.go"})
 print(v.out)
 const OLD = "cursor:pointer;opacity:.6;transition:opacity .15s}"
@@ -714,7 +714,7 @@ print("after: exit " .. f.code .. "; " .. f.out)
     buttons_test.go:523: important.css: 0 hidden; cannot judge !important in ".cbtn"
     buttons_test.go:523: narrow-none.css: 12 hidden; a code block's reply button with no comments, 30rem wide, light: display:none on its button
     buttons_test.go:523: specific-shows.css: 0 hidden;
-    buttons_test.go:523: tuesday.css: 16 hidden; a code block's reply button with no comments, 51rem wide, light: opacity 0, under 0.5
+    buttons_test.go:523: hidden-at-rest.css: 16 hidden; a code block's reply button with no comments, 51rem wide, light: opacity 0, under 0.5
 planted: exit 1
     buttons_test.go:482: a paragraph's reply button with no comments, 51rem wide, dark: opacity 0, under 0.5
     ...
@@ -726,7 +726,7 @@ git diff: as before the plant
 after: exit 0; ... ok  test, 1837 ms, cpu 1853 ms: 48 tests passed, 63 subtests ... fast: PASS
 ```
 
-The detail I like: Tuesday's sheet is hidden at 51rem and wider, and not at 50rem and under, because its narrow rule set the button to .5. So it would have shown in a narrow window and not in a wide one.
+The detail I like: Session 2's sheet is hidden at 51rem and wider, and not at 50rem and under, because its narrow rule set the button to .5. So it would have shown in a narrow window and not in a wide one.
 
 A checker needs a plant of its own, and the fixtures are what should catch it. One fault in the cascade, with opacities no longer multiplying out to the page:
 
@@ -815,7 +815,7 @@ It stopped in 5 ms, before any build or server, at 2,006 steps for the bad page.
 
 ### fast's reader of go test
 
-Wednesday found a panic that hid twelve tests. Fast's `failed_tests` is what turns `go test -v` into a red that names the failures, so it gets a known-bad output: a pass with logs, a failure with logs, and a panic.
+Session 3 found a panic that hid twelve tests. Fast's `failed_tests` is what turns `go test -v` into a red that names the failures, so it gets a known-bad output: a pass with logs, a failure with logs, and a panic.
 
 ```shale
 -- fast's own reader of go test -v gets a known-bad output: a pass with logs, a failure with logs, a panic. It must name the failure and the panic, and show only their lines
@@ -860,7 +860,7 @@ fast: PASS
 Its plant: a panic line no longer recognized.
 
 ```shale
--- plant once in fast's reader: a panic line no longer recognized, Wednesday's hidden-tests trap. The known-bad output must stop fast before any program runs; the stop's steps are the fixture's cost
+-- plant once in fast's reader: a panic line no longer recognized, Session 3's hidden-tests trap. The known-bad output must stop fast before any program runs; the stop's steps are the fixture's cost
 const OLD = "    elseif starts_with(l, \"panic:\") then\n"
 const NEW = "    elseif starts_with(l, \"panic!\") then\n"
 local before = git_diff("")
@@ -927,10 +927,10 @@ print(json_write(git_status("")))
 
 ```text
 pid 2484343: /home/steve/essay-dogfood/bin/essay-surface -notes /home/steve/essay-dogfood/notes -addr 127.0.0.1:9301
-[{"code":"??","path":"journal/prompts/friday.md"},{"code":"??","path":"journal/thursday.md"}]
+[{"code":"??","path":"journal/prompts/session-5.md"},{"code":"??","path":"journal/session-4.md"}]
 ```
 
-Only your dogfood server is running, and I didn't touch it. `journal/prompts/friday.md` appeared during the day; it's yours, so I left it uncommitted.
+Only your dogfood server is running, and I didn't touch it. `journal/prompts/session-5.md` appeared during the day; it's yours, so I left it uncommitted.
 
 ## Report
 
@@ -949,7 +949,7 @@ Only your dogfood server is running, and I didn't touch it. `journal/prompts/fri
 | dates | the later of commit and file time | `roc-interludes.md: 2026-11-12 in the folder, 2026-11-13 in the clone` | yes, TestDatesFromNoteGitAndFile | none |
 | bench | every note request renders its note again | `cpu, notes: 1776 us a request ..., budget 400` | no: fast passed | none |
 | new: comments' parent | the check taken out of `newStore` | `TestCommentsParentMustExist` failed for the missing parent and for the file | no | none |
-| new: reply buttons | Tuesday's `opacity:0` back in comments.css | `TestReplyButtonsShow`: every place, 51 and 80rem, light and dark: `opacity 0, under 0.5` | no | `testdata/buttons/`, 5 known-bad sheets (Tuesday's real one among them) and 2 known-good: 0.02 s inside `go test`, no build |
+| new: reply buttons | Session 2's `opacity:0` back in comments.css | `TestReplyButtonsShow`: every place, 51 and 80rem, light and dark: `opacity 0, under 0.5` | no | `testdata/buttons/`, 5 known-bad sheets (Session 2's real one among them) and 2 known-good: 0.02 s inside `go test`, no build |
 | fast's reader | a `panic:` line not recognized | `fast's reader of go test misreads testdata/fast/go-test-v.txt` | no | `testdata/fast/go-test-v.txt`, read first: 3,184 steps, 3 ms |
 
 The button checker had a plant of its own (opacities no longer multiplied), and `faint-article.css` caught it.

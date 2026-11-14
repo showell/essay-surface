@@ -1,6 +1,6 @@
-# Monday: the essay surface, day one
+# Session 1: the essay surface, from scratch
 
-The prompt is `journal/prompts/monday.md`: a Go server (standard library only) that serves `notes/*.md` as HTML at `/notes/<name>.md`, an index at `/` newest first, a markdown renderer in Go, a dozen real notes as sample data, renderer tests, and real numbers on speed with five hundred notes.
+The prompt is `journal/prompts/session-1.md`: a Go server (standard library only) that serves `notes/*.md` as HTML at `/notes/<name>.md`, an index at `/` newest first, a markdown renderer in Go, a dozen real notes as sample data, renderer tests, and real numbers on speed with five hundred notes.
 
 All shell work is Shale. Each script below is verbatim, with why I ran it and what it said.
 

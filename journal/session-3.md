@@ -1,8 +1,8 @@
-# Wednesday: an index that listens, and two checks to keep
+# Session 3: an index that listens, and two checks to keep
 
-The prompt is `journal/prompts/wednesday.md`. Two jobs. The index: make the server hear about changes instead of stat-ing every note on every request, take a note's date from the note or from git rather than the file's modified time, and measure before and after. The checks: turn Monday's and Tuesday's four scripts into a **fast** check for every edit, a **full** check before shipping that says plainly whether it is safe, and keep the timing out of the verdict on a busy box (or hold it to a budget a busy box can't break). The code should say what it does.
+The prompt is `journal/prompts/session-3.md`. Two jobs. The index: make the server hear about changes instead of stat-ing every note on every request, take a note's date from the note or from git rather than the file's modified time, and measure before and after. The checks: turn Session 1's and Session 2's four scripts into a **fast** check for every edit, a **full** check before shipping that says plainly whether it is safe, and keep the timing out of the verdict on a busy box (or hold it to a budget a busy box can't break). The code should say what it does.
 
-All shell work is Shale, one launch per Bash call. Each script is verbatim below, with why I ran it and what it said, the stops and retries included. When a script carried a long Go text into an `edit`, I've cut the Go and named the commit, as Tuesday's journal did. The new Go files and scripts I wrote whole with my file writer, and I say so where they appear.
+All shell work is Shale, one launch per Bash call. Each script is verbatim below, with why I ran it and what it said, the stops and retries included. When a script carried a long Go text into an `edit`, I've cut the Go and named the commit, as Session 2's journal did. The new Go files and scripts I wrote whole with my file writer, and I say so where they appear.
 
 ## Orienting
 
@@ -54,7 +54,7 @@ That gave me the two tools for the checks: child runs for the stages, and a repo
 
 ## What a note's date is: the survey
 
-Monday's report guessed that most notes open with an italic date line. Before writing a rule, I counted. The first try used `head_lines`:
+Session 1's report guessed that most notes open with an italic date line. Before writing a rule, I counted. The first try used `head_lines`:
 
 ```shale
 -- the real notes' dates: which notes carry a date near their top, and in what shape
@@ -222,7 +222,7 @@ BenchmarkIndexPage500-2         	    5894	    185678 ns/op	  114496 B/op	     50
 BenchmarkNoteCached-2           	   23937	     49208 ns/op	  112353 B/op	      49 allocs/op
 ```
 
-And over HTTP, with Tuesday's bench as it stood:
+And over HTTP, with Session 2's bench as it stood:
 
 ```
 shale scripts/bench.shale dir=.run/real rounds=500
@@ -283,7 +283,7 @@ print(run({"go", "vet", "."}, {timeout_ms = 120000, tail = 30}).out)
 vet: ./comments_test.go:350:12: s.get undefined (type *store has no field or method get)
 ```
 
-The tests came next. `testStore` now takes the testing value and closes the store's watch at cleanup. Tuesday's `BenchmarkIndexScan500` went, since the scan it measured is gone. Two benchmarks replace it: `BenchmarkIndexAfterTouch500`, the first index after a note changes, and `BenchmarkRescan500`, the start-up and overflow cost.
+The tests came next. `testStore` now takes the testing value and closes the store's watch at cleanup. Session 2's `BenchmarkIndexScan500` went, since the scan it measured is gone. Two benchmarks replace it: `BenchmarkIndexAfterTouch500`, the first index after a note changes, and `BenchmarkRescan500`, the start-up and overflow cost.
 
 ```shale
 -- the tests: a store is made with its testing value, closed after; the scan benchmark goes with the scan
@@ -413,10 +413,10 @@ panic: runtime error: slice bounds out of range [:-1] [recovered, repanicked]
 FAIL	essay-surface	0.042s
 ```
 
-**A bug in Tuesday's test.** When the orphans section was missing, `TestCommentsFollowEdits` sliced `page[:i]` with `i = -1`. The panic killed the test binary, and every test after it went unreported. It hid nothing yesterday only because yesterday nothing failed. Now it fails plainly:
+**A bug in Session 2's test.** When the orphans section was missing, `TestCommentsFollowEdits` sliced `page[:i]` with `i = -1`. The panic killed the test binary, and every test after it went unreported. It hid nothing yesterday only because yesterday nothing failed. Now it fails plainly:
 
 ```shale
--- Tuesday's test sliced page[:i] with i = -1 when the orphans are missing: a panic that stopped every test after it. Fatal there instead; then the deaf watch again
+-- Session 2's test sliced page[:i] with i = -1 when the orphans are missing: a panic that stopped every test after it. Fatal there instead; then the deaf watch again
 edit("comments_test.go", [=[	if i < 0 || !strings.Contains(page[i:], "on the claim") || strings.Contains(page[:i], "on the claim") {
 		t.Error("a deleted paragraph's comment is not with the orphans")
 	}]=], [=[	if i < 0 {
@@ -501,7 +501,7 @@ git not asked about a note that comes later:
 ok  	essay-surface	1.457s
 ```
 
-Both reds came out right. The 2030 that shows through the first plant is the misleading file time doing its job. But a failure printed a whole note struct with `%v`, which I wouldn't want to read twice. I fixed the message and ran the gate in the same Bash call, which put two launches in one call and broke Monday's rule:
+Both reds came out right. The 2030 that shows through the first plant is the misleading file time doing its job. But a failure printed a whole note struct with `%v`, which I wouldn't want to read twice. I fixed the message and ran the gate in the same Bash call, which put two launches in one call and broke Session 1's rule:
 
 ```text
 PreToolUse:Bash hook error: shale-gate: the heredoc has no last line `EOF`; ...
@@ -729,12 +729,12 @@ All 506 notes sit in the same place, though every file in the clone has one and 
 ### What I changed in yesterday's scripts, and why
 
 - **`check.shale` became `fast.shale`.** It now runs the smoke test as a child, holds every stage to a CPU budget, and says how many tests ran ("44 tests passed, 63 subtests"), since a green is a claim. `check.shale` is deleted; git has it.
-- **What the scripts shared by copy moved into `.shale/prelude.shale`**: build, start (with a wait for "listening", and a stop that prints the log), stop (which reads the server's CPU line), a fresh scratch folder, a page's fingerprints, an index's names, and the box's load. Tuesday's three scripts each had their own start block.
-- **Each script owns `.run/<script>/`.** Tuesday's audit ran `remove_tree(".run")`, which deleted the bench's record along with its own (Tuesday's journal says so in passing).
+- **What the scripts shared by copy moved into `.shale/prelude.shale`**: build, start (with a wait for "listening", and a stop that prints the log), stop (which reads the server's CPU line), a fresh scratch folder, a page's fingerprints, an index's names, and the box's load. Session 2's three scripts each had their own start block.
+- **Each script owns `.run/<script>/`.** Session 2's audit ran `remove_tree(".run")`, which deleted the bench's record along with its own (Session 2's journal says so in passing).
 - **`audit.shale` has a verdict.** It fails on any leftover not known to be faithful. The three examined pages are named with their counts (a lone ```` ``` ```` quoted in prose, and `` `SEED \`<hash>`` ``), so a page whose count changes is looked at again. That is a short named list, not a blanket.
 - **`bench.shale` has a verdict, and copies the notes first** (it posts comments). Each phase runs on its own server, and the server reports its CPU time when stopped. The medians are judged only on a quiet box. More on this below.
 - **`comments_smoke.shale`** uses the prelude and clears its whole scratch folder. My first edit cleared only its `notes/` and would have kept the last run's comments.
-- **The anchoring simulation (`calibrate_test.go`) is simpler, and gives a verdict on the real notes.** It used to try four thresholds, Tuesday's experiment, which is kept in `8c05754`. It now calls `resolve` itself at the one threshold in use. With `ESSAY_NOTES` set it used to log and return. Now it fails if an edit in place loses a comment, or if more than a set rate lands on the wrong block (split 1%, merged 2%, moved 1%, deleted 2.5%). The deleted-block examples print one to a line, so the full check can show them.
+- **The anchoring simulation (`calibrate_test.go`) is simpler, and gives a verdict on the real notes.** It used to try four thresholds, Session 2's experiment, which is kept in `8c05754`. It now calls `resolve` itself at the one threshold in use. With `ESSAY_NOTES` set it used to log and return. Now it fails if an edit in place loses a comment, or if more than a set rate lands on the wrong block (split 1%, merged 2%, moved 1%, deleted 2.5%). The deleted-block examples print one to a line, so the full check can show them.
 
 ### The server reports its CPU
 
@@ -762,7 +762,7 @@ vet exit 0
 ### The simulation, simplified
 
 ```shale
--- the simulation: one threshold, the one in use (Tuesday's four were the experiment, kept in 8c05754); the real notes get a verdict, not just a log
+-- the simulation: one threshold, the one in use (Session 2's four were the experiment, kept in 8c05754); the real notes get a verdict, not just a log
 edit("calibrate_test.go", {
   -- (five pairs: tally, simulate, TestSimulateAnchoring; the Go is in a4a2029)
 })
@@ -807,7 +807,7 @@ real: exit 0, 13357 ms, cpu 14778
     calibrate_test.go:204: deleted      cases 20866: right 20600, on another block  266, orphaned    0
 ```
 
-The samples' pinned counts are exactly Tuesday's, so calling `resolve` directly changed no decision. On the real notes: split 0.50% wrong, merged 0.80%, moved 0.46%, deleted 1.27%, all under their limits.
+The samples' pinned counts are exactly Session 2's, so calling `resolve` directly changed no decision. On the real notes: split 0.50% wrong, merged 0.80%, moved 0.46%, deleted 1.27%, all under their limits.
 
 13 s is over the ten that makes slowness a finding, so I profiled it:
 
@@ -1112,7 +1112,7 @@ print(r.out)
           *[The beacon widget goes here: drag the clock and watch the masts blink out of step.]* -> *[The sky widget goes here: drag the clock and watch the sun set.]*
 ```
 
-Those are the 1.3% of deleted blocks whose comments go to a look-alike. They are the honest cost of rule 3, and Tuesday's report named it.
+Those are the 1.3% of deleted blocks whose comments go to a look-alike. They are the honest cost of rule 3, and Session 2's report named it.
 
 The README names the two checks, and `check.shale` went:
 

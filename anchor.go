@@ -159,7 +159,7 @@ const (
 
 // similarEnough is the least dice score, in thousandths, at which an
 // edited block that also moved keeps its comments. TestSimulateAnchoring,
-// run on the real notes, chose it and the features (journal/tuesday.md).
+// run on the real notes, chose it and the features (journal/session-2.md).
 const similarEnough = 600
 
 // features is the similarity's view of a text. A variable so that

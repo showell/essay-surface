@@ -1,10 +1,10 @@
-# Demo: one note in the new format, shown and replied to
+# Session 9: one note in the new format, shown and replied to
 
-The prompt is `journal/prompts/demo.md`: write one note in the new format, with a few paragraphs, a list, a code block and a real dot diagram, and make the surface show it as a page that takes replies, like any other note, while the old notes render exactly as they do now. Find out where Roc runs and say why, and what that costs later. Change the types only where the demo pushes back, and name each change. Keep the fast check green and add a check for the new path. Don't release.
+The prompt is `journal/prompts/session-9.md`: write one note in the new format, with a few paragraphs, a list, a code block and a real dot diagram, and make the surface show it as a page that takes replies, like any other note, while the old notes render exactly as they do now. Find out where Roc runs and say why, and what that costs later. Change the types only where the demo pushes back, and name each change. Keep the fast check green and add a check for the new path. Don't release.
 
 ## Orienting
 
-I read the prompt, the last journal (`journal/format-types.md`) with Steve's reply, the proposal in essay-repl-server, the README, `server.go`, `store.go`, `frontend.go`, the first part of `markdown.go`, `comments.js`, the two checks and the repo prelude, and roc-apps' `CLAUDE.md` and `docs/roc-style.md`.
+I read the prompt, the last journal (`journal/session-8.md`) with Steve's reply, the proposal in essay-repl-server, the README, `server.go`, `store.go`, `frontend.go`, the first part of `markdown.go`, `comments.js`, the two checks and the repo prelude, and roc-apps' `CLAUDE.md` and `docs/roc-style.md`.
 
 My first Shale stumbled three times on `run`'s required options: a run with neither `timeout_ms` nor a keep stops before it starts, and each stop names the one that's missing, one per launch. I read `SHALE-AGENTS.md` then, and set both on every `run` after.
 

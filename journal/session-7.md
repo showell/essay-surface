@@ -1,6 +1,6 @@
-# Links: bare URLs in a note become links
+# Session 7: bare URLs in a note become links
 
-The prompt is `journal/prompts/links.md`: bare `http://` and `https://` URLs in prose become links, nothing in code changes, a URL ends where a reader would say it ends, the link is escaped like the rest of the page, and links open as they do now. Show the cases as fixtures, seed one fault into escaping, run the full check, and say what it did on the real notes.
+The prompt is `journal/prompts/session-7.md`: bare `http://` and `https://` URLs in prose become links, nothing in code changes, a URL ends where a reader would say it ends, the link is escaped like the rest of the page, and links open as they do now. Show the cases as fixtures, seed one fault into escaping, run the full check, and say what it did on the real notes.
 
 ## Orienting
 
@@ -376,7 +376,7 @@ The retry was the same script with `replace_all(l, "\n", " ")` as `join(split(l,
    called from stdin:32:12 (in `bare_count`)
 ```
 
-Monday's lesson, again: `re_find_all` is the prelude's and costs a step a character, and these are 7 MB of pages read twice. The third version uses `split` and `find`, which are builtins:
+Session 1's lesson, again: `re_find_all` is the prelude's and costs a step a character, and these are 7 MB of pages read twice. The third version uses `split` and `find`, which are builtins:
 
 ```shale
 -- before against after on the 514 real pages, by split and find (builtins): the bare URLs linked, anything else that changed, every http(s):// left as text outside code
