@@ -616,3 +616,15 @@ SAFE TO SHIP
 25.7 s wall, 22.4 s CPU, at load 0.3.
 
 **Commits:** `e980835` (the bare URLs, their tests and fixtures), and this journal.
+
+## The release
+
+The orchestrator ran `scripts/release.shale` on Steve's server, and these were its last lines:
+
+```text
+full check: SAFE TO SHIP, 24566 ms
+comments kept: 4 files, 11 comments, in essay-dogfood/releases/2026-11-14T110736Z/comments, each compared
+ok: the index, 514 notes, the same as before
+ok: all 11 comments from before on their pages and in their files
+RELEASED: running bbd9eae on 127.0.0.1:9301; to roll back to 8218ffc: cd /home/steve && shale repos:essay-surface/scripts/release.shale data=essay-dogfood port=9301 rollback=1
+```
