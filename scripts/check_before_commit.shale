@@ -41,20 +41,21 @@ end
 -- One stage: its program run, its verdict, its times on one line.
 function stage(name, argv, opts)
   local run_opts = {timeout_ms = 120000, whole = 400000, stage = name}
-  for k in keys(opts) do run_opts[k] = opts[k] end
-  local r = run(argv, run_opts)
-  if r.code == 0 then return r end
-  local failed = failed_tests(r.out)
+  for key in keys(opts) do run_opts[key] = opts[key] end
+  local result = run(argv, run_opts)
+  if result.code == 0 then return result end
+  local failed = failed_tests(result.out)
   if #failed.names == 0 then
-    print(join(last(lines(r.out), 60), "\n"))
-    fail(name .. ": " .. argv[1] .. " exited " .. r.code)
+    print(join(last(lines(result.out), 60), "\n"))
+    fail(name .. ": " .. argv[1] .. " exited " .. result.code)
   end
   print(join(take(failed.lines, 60), "\n"))
   fail(name .. ": " .. #failed.names .. " failed: " .. join(failed.names, ", "))
 end
 
-function said(name, r, detail)
-  print("ok  " .. name .. ", " .. r.ms .. " ms, cpu " .. r.cpu_ms .. " ms" .. detail)
+-- A stage that passed: its name, its times, and what it counted.
+function report_pass(name, result, detail)
+  print("ok  " .. name .. ", " .. result.ms .. " ms, cpu " .. result.cpu_ms .. " ms" .. detail)
 end
 
 -- A known-bad go test -v output, read first: a reader that loses a failure
@@ -69,21 +70,21 @@ if not (names_both and keeps_failing_log and drops_passing_log and keeps_panic_t
   fail("the commit check's reader of go test misreads testdata/fast/go-test-v.txt: " .. json_write(known))
 end
 
-local fmt = stage("gofmt", {"gofmt", "-l", "."}, {cpu_budget_ms = 5000})
-if fmt.out ~= "" then
-  print(fmt.out)
+local gofmt_result = stage("gofmt", {"gofmt", "-l", "."}, {cpu_budget_ms = 5000})
+if gofmt_result.out ~= "" then
+  print(gofmt_result.out)
   fail("gofmt: these files need gofmt -w")
 end
-said("gofmt", fmt, "")
-said("vet", stage("vet", {"go", "vet", "."}, {cpu_budget_ms = 20000}), "")
+report_pass("gofmt", gofmt_result, "")
+report_pass("vet", stage("vet", {"go", "vet", "."}, {cpu_budget_ms = 20000}), "")
 -- go test embeds comments.js but never parses it.
-said("js", stage("js", {"node", "--check", "comments.js"}, {cpu_budget_ms = 5000, want = "check: the front end's syntax, which go test cannot see"}), "")
+report_pass("js", stage("js", {"node", "--check", "comments.js"}, {cpu_budget_ms = 5000, want = "check: the front end's syntax, which go test cannot see"}), "")
 -- The budget covers compiling the tests after an edit (about 4 s of CPU)
 -- and running them (about 3 s).
-local test = stage("test", {"go", "test", "-count=1", "-v", "."}, {cpu_budget_ms = 30000})
-said("test", test, ": " .. #re_lines(test.out, "^--- PASS") .. " tests passed, " .. #re_lines(test.out, "^    --- PASS") .. " subtests")
-local smoke = stage("smoke", {"shale", "scripts/check_comment_flow.shale"}, {cpu_budget_ms = 30000})
-said("smoke", smoke, ": " .. #re_lines(smoke.out, "^ok: ") .. " checks through the real server")
-local note = stage("note", {"shale", "scripts/check_note_format.shale"}, {cpu_budget_ms = 30000})
-said("note", note, ": " .. #re_lines(note.out, "^ok: ") .. " checks, from the Roc to the page")
+local test_result = stage("test", {"go", "test", "-count=1", "-v", "."}, {cpu_budget_ms = 30000})
+report_pass("test", test_result, ": " .. #re_lines(test_result.out, "^--- PASS") .. " tests passed, " .. #re_lines(test_result.out, "^    --- PASS") .. " subtests")
+local smoke_result = stage("smoke", {"shale", "scripts/check_comment_flow.shale"}, {cpu_budget_ms = 30000})
+report_pass("smoke", smoke_result, ": " .. #re_lines(smoke_result.out, "^ok: ") .. " checks through the real server")
+local note_result = stage("note", {"shale", "scripts/check_note_format.shale"}, {cpu_budget_ms = 30000})
+report_pass("note", note_result, ": " .. #re_lines(note_result.out, "^ok: ") .. " checks, from the Roc to the page")
 print("check before commit: PASS")
