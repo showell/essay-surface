@@ -145,3 +145,12 @@ fast: PASS
 ## Time
 
 The prompt came in at about 14:01. The first probe of the toolchain ran at 14:03, the Roc was written and rendering the demo by 14:13, and the server showed it at 14:14. The check and its plants were done by 14:19. The toolchain took about three minutes in all: two probes and three compile errors. It never fought.
+
+## The release
+
+The orchestrator, not the agent, shipped it. Two things blocked it.
+
+- **The release script built only the Go binary,** so a released server would have shown every `.note` as a page that can't be shown. `release.shale` now builds `render-note` with the pinned Roc, renders the demo note with it before touching anything, and moves it with its server through every swap (8deea74). It was proved on dev first: a release, a rollback and a roll-forward, with the renderer following its server each way.
+- **The full check's audit was red** on an essay note with a bare code fence in a sentence. The fix was the sentence, not an entry in the audit's list of faithful pages.
+
+Released to the dogfood surface as 8deea74, with 17 comments where they were. The demo note was then copied in for the first eye test.
