@@ -105,6 +105,61 @@ func TestNotFound(t *testing.T) {
 	}
 }
 
+// TestServeImage serves a picture of each kind beside the notes, and refuses
+// every other name with 404, each refused name a real file (or a link to one),
+// so it is the rule that refuses it, not a missing file.
+func TestServeImage(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "notes")
+	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+	os.Mkdir(filepath.Join(dir, "folder.png"), 0o755)
+	writeNote(t, dir, "a.md", "# A\n", time.Now())
+	served := map[string]string{"sun-2.png": "image/png", "a.jpg": "image/jpeg", "plan.svg": "image/svg+xml"}
+	for name := range served {
+		writeNote(t, dir, name, "picture "+name, time.Now())
+	}
+	writeNote(t, filepath.Join(dir, "sub"), "b.png", "secret", time.Now())
+	writeNote(t, root, "out.png", "secret", time.Now())
+	for _, name := range []string{"x.gif", "x.jpeg", "x.PNG", "X.png", "a_b.png", "a b.png", ".hidden.png", "..png", "-a.png", "a..png", "x.png.txt"} {
+		writeNote(t, dir, name, "secret", time.Now())
+	}
+	if err := os.Symlink(filepath.Join(root, "out.png"), filepath.Join(dir, "link.png")); err != nil {
+		t.Fatal(err)
+	}
+	h := testStore(t, dir).handler()
+	for name, typ := range served {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/notes/"+name, nil))
+		hd := rec.Header()
+		if rec.Code != 200 || rec.Body.String() != "picture "+name {
+			t.Errorf("%s: %d %q, want 200 and the file", name, rec.Code, rec.Body.String())
+		}
+		if hd.Get("Content-Type") != typ || hd.Get("Cache-Control") != "no-store" || hd.Get("X-Content-Type-Options") != "nosniff" ||
+			!strings.Contains(hd.Get("Content-Security-Policy"), "default-src 'none'") {
+			t.Errorf("%s: headers %v", name, hd)
+		}
+	}
+	for _, path := range []string{"/notes/sub/b.png", "/notes/sub%2Fb.png", "/notes/..%2Fout.png", "/notes/../out.png",
+		"/notes/x.gif", "/notes/x.jpeg", "/notes/x.PNG", "/notes/X.png", "/notes/a_b.png", "/notes/a%20b.png",
+		"/notes/.hidden.png", "/notes/..png", "/notes/-a.png", "/notes/a..png", "/notes/x.png.txt",
+		"/notes/link.png", "/notes/folder.png", "/notes/missing.png", "/notes/sun-2.png/x"} {
+		// The mux answers a path with ".." by redirecting to its clean form,
+		// /out.png here, which must be refused in turn.
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code == http.StatusTemporaryRedirect {
+			path = rec.Header().Get("Location")
+		}
+		code, body := get(t, h, path)
+		if code != 404 {
+			t.Errorf("%s: got %d, want 404", path, code)
+		}
+		if strings.Contains(body, "secret") {
+			t.Errorf("%s: served a file the rule refuses", path)
+		}
+	}
+}
+
 func TestEditedNoteRerenders(t *testing.T) {
 	dir := t.TempDir()
 	day := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)

@@ -214,7 +214,21 @@ with_block = |page, block|
 				})
 				|> with_html("\n")
 		}
-		Image(_) => crash "Page.with_block: ImageFile has no maker yet, so no note holds an image"
+		Image({ file, description }) => {
+			name = file.to_str()
+			said = escaped_text(description)
+			# A reply anchors to the file's name as well as the caption, so a
+			# sign-off on one picture reads as made on an earlier version once
+			# the note shows another.
+			page
+				|> with_commentable({
+					opening: "<figure class=\"image\"",
+					inner: "<img src=\"/notes/${name}\" alt=\"${said}\"><figcaption>${said}</figcaption>",
+					closing: "</figure>",
+					text: "${description} (${name})",
+				})
+				|> with_html("\n")
+		}
 		Widget(_) => crash "Page.with_block: Widget has no maker yet, so no note holds one"
 	}
 
@@ -365,6 +379,8 @@ every_kind =
 	\\|---|---|
 	\\| 1 & 2 | [x](https://x.org) |
 	\\
+	\\![The "sun" & <sky>](sun-2.png)
+	\\
 	\\---
 	\\
 	\\End.
@@ -403,8 +419,9 @@ expect
 		\\<tbody>
 		\\<tr><td>1 &amp; 2</td><td><a href="https://x.org">x</a></td></tr>
 		\\</tbody></table></div>
+		\\<figure class="image" data-c="15"><img src="/notes/sun-2.png" alt="The &quot;sun&quot; &amp; &lt;sky&gt;"><figcaption>The &quot;sun&quot; &amp; &lt;sky&gt;</figcaption></figure>
 		\\<hr>
-		\\<p data-c="15">End.</p>
+		\\<p data-c="16">End.</p>
 		\\
 expect page_of(every_kind).blocks.map(|block| block.text) == [
 	"A t & <u>",
@@ -422,6 +439,7 @@ expect page_of(every_kind).blocks.map(|block| block.text) == [
 	"x := 1",
 	"digraph { a -> \"b\" }",
 	"a|b | B\n1 & 2 | x",
+	"The \"sun\" & <sky> (sun-2.png)",
 	"End.",
 ]
 expect page_of(every_kind).diagram_count == 1

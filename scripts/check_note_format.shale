@@ -2,8 +2,10 @@
 -- checked with no errors and no warnings, and its expects run, every one of
 -- them; render-note built from it; every note in notes/ rendered, and each
 -- of its diagrams drawn by the page's own viz.js under node; then the real
--- server on a folder of its own, with the demo note, a markdown note and a
--- note that doesn't parse: replies posted to a .note's blocks, the note
+-- server on a folder of its own, with the demo note and its picture, a
+-- markdown note and a note that doesn't parse: replies posted to a .note's
+-- blocks (its picture's among them), the picture served and a name the rule
+-- refuses not, the note
 -- edited on disk under them, a link by name, and the broken note failing
 -- alone. Everything the server is up for runs under attempt; the server is
 -- stopped before the verdict.
@@ -11,6 +13,7 @@
 -- Its last line is "check_note_format: PASS".
 const DIR = ".run/note"
 const DEMO = "format-demo.note"
+const PICTURE = "format-demo-sun.png"
 
 function want(cond, what, out)
   if not cond then fail("not so: " .. what) end
@@ -105,9 +108,18 @@ function flow(demo)
   local table_k = block_starting(demo.blocks, "Block | A reply attaches to")
   r = post(DEMO, table_k, hashes[table_k + 1], "On the table.")
   want(r.status == 201, "a reply to the table is posted (201)", out)
+  local image_k = block_starting(demo.blocks, "A small sun over a green field")
+  r = post(DEMO, image_k, hashes[image_k + 1], "Approved.")
+  want(r.status == 201, "a reply to the picture is posted (201)", out)
   p = page(DEMO)
   want(find(p, "</figure><div class=\"cmts\" data-for=\"" .. figure .. "\">") ~= nil, "the diagram's reply follows the figure", out)
   want(find(p, "</tbody></table></div><div class=\"cmts\" data-for=\"" .. table_k .. "\">") ~= nil, "the table's reply follows the table", out)
+  want(find(p, "<figure class=\"image\" data-c=\"" .. image_k .. "\"><img src=\"/notes/" .. PICTURE .. "\" alt=\"A small sun") ~= nil, "the picture is an img in its figure", out)
+  want(find(p, "drawn for this note</figcaption></figure><div class=\"cmts\" data-for=\"" .. image_k .. "\">") ~= nil, "the picture's reply follows its caption", out)
+  local picture = http_get(essay_base() .. "/notes/" .. PICTURE)
+  want(picture.status == 200 and #picture.body == #read("notes/" .. PICTURE) and picture.headers["content-type"] == "image/png", "the picture is served whole, as image/png", out)
+  want(picture.headers["cache-control"] == "no-store", "and kept by no browser", out)
+  want(http_get(essay_base() .. "/notes/format-demo-sun.gif").status == 404, "a picture by a name the rule refuses, a .gif beside it, is 404", out)
   want(find(p, "Is &lt;the arrow&gt; &amp; its label right?") ~= nil, "escaped", out)
   want(find(p, "a subpoint is one paragraph too;</span><div class=\"cmts\" data-for=\"" .. sub_k .. "\">") ~= nil, "the subpoint's reply follows its text", out)
 
@@ -163,6 +175,8 @@ essay_build()
 essay_fresh(DIR)
 mkdir(DIR .. "/notes")
 create(DIR .. "/notes/" .. DEMO, read("notes/" .. DEMO))
+copy("notes/" .. PICTURE, DIR .. "/notes/" .. PICTURE)
+copy("notes/" .. PICTURE, DIR .. "/notes/format-demo-sun.gif")
 create(DIR .. "/notes/plain.md", "# Plain\n\nA paragraph.\n")
 create(DIR .. "/notes/broken.note", "# Broken\n\nA **** here.\n")
 local demo = rendered("notes/" .. DEMO)

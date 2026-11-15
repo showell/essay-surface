@@ -18,6 +18,10 @@
 ##   each column (`|---|---|`), then its rows, each with a `|` before, between
 ##   and after its cells. Every cell holds text, and every row has a cell for
 ##   each heading. A `|` inside code stays in its cell;
+## - `![description](file.png)` alone on its line is an image: a picture
+##   beside the note in its folder, named as `ImageFile` says (a note's name,
+##   then `.png`, `.jpg` or `.svg`, no folder), and a description in plain
+##   words, which is the picture's alt text and its caption;
 ## - `---` alone is a divider;
 ## - anything else is a paragraph, its lines joined by spaces. One that opens
 ##   in bold has that bold as its lead.
@@ -30,6 +34,7 @@
 ## read as words: it needs a blank line before it.
 import Block
 import Diagram
+import ImageFile
 import Note
 import NoteName
 import Phrase
@@ -63,6 +68,9 @@ Parse := [].{
 		NoTableDivider,
 		TableRowWidth,
 		EmptyCell,
+		NotAnImageLine,
+		NoImageDescription,
+		NotAnImageFile({ file : Str, problem : ImageFile.Problem }),
 	]
 
 	## The note this source holds.
@@ -114,6 +122,11 @@ Parse := [].{
 				NoTableDivider => "a table's second line is a run of dashes for each column, `|---|---|`"
 				TableRowWidth => "this line has a different number of cells than the table has headings"
 				EmptyCell => "a table cell holds words; an empty one can't be written"
+				NotAnImageLine => "an image is a line of its own, `![description](file.png)`, with a blank line after it"
+				NoImageDescription => "an image's description is its alt text and its caption, so it can't be empty"
+				NotAnImageFile({ file, problem: InAFolder }) => "`${file}` names a folder; an image is a file beside the note, named with no `/`"
+				NotAnImageFile({ file, problem: NotAPicture }) => "`${file}` isn't a picture: an image's file ends `.png`, `.jpg` or `.svg`"
+				NotAnImageFile({ file, problem: NotAName }) => "`${file}` isn't a picture's name: before its extension come lowercase letters, digits and hyphens, starting with a letter or a digit"
 			}
 		"line ${line.to_str()}: ${why}"
 	}
@@ -204,7 +217,7 @@ joined_text = |run_lines| Str.join_with(run_lines.map(|line| line.text.trim()), 
 ## paragraph.
 starts_block : Str -> Bool
 starts_block = |text| {
-	is_marked = ["```", "#", ">", "- ", "|"].any(|opening| text.starts_with(opening))
+	is_marked = ["```", "#", ">", "- ", "|", "!["].any(|opening| text.starts_with(opening))
 	is_marked or text.trim() == "---" or numbered_marker(text).is_ok()
 }
 
@@ -232,6 +245,8 @@ block_at = |lines, at| {
 		quote_at(lines, at)
 	} else if text.starts_with("|") {
 		table_at(lines, at)
+	} else if text.starts_with("![") {
+		image_at(lines, at)
 	} else if text.starts_with("- ") or numbered_marker(text).is_ok() {
 		list_at(lines, at)
 	} else {
@@ -386,6 +401,32 @@ cells_of = |line| {
 		$cells = $cells.append(text_of(scanned_spans(raw, line.number)?, line.number)?)
 	}
 	Ok($cells)
+}
+
+## An image: the one line `![description](file)` and nothing after it on the
+## line or below it before a blank line. The description is plain words, read
+## as written, since it is an attribute's text as well as the caption's.
+image_at : List(Line), U64 -> Try({ block : Block, after : U64 }, Parse.Problem)
+image_at = |lines, at| {
+	line = line_at(lines, at)
+	run = run_from(lines, at)
+	if run.len() > 1 {
+		return Err({ line: line_at(run, 1).number, fault: NotAnImageLine })
+	}
+	bytes = line.text.trim().to_utf8()
+	close = find_byte(bytes, { byte: ']', at: 2 }) ? |NotFound| { line: line.number, fault: NotAnImageLine }
+	description = utf8(bytes.sublist({ start: 2, len: close - 2 })).trim()
+	target = utf8(bytes.drop_first(close + 1))
+	inner = target.drop_prefix("(").drop_suffix(")")
+	is_wrapped = target.starts_with("(") and target.ends_with(")")
+	if !is_wrapped or inner.to_utf8().any(|b| b == '(' or b == ')') {
+		return Err({ line: line.number, fault: NotAnImageLine })
+	}
+	if description.is_empty() {
+		return Err({ line: line.number, fault: NoImageDescription })
+	}
+	file = ImageFile.from_str(inner) ? |problem| { line: line.number, fault: NotAnImageFile({ file: inner, problem }) }
+	Ok({ block: Block.Image({ file, description }), after: at + 1 })
 }
 
 ## A point as the list's lines give it, before its text is read: its first
@@ -802,6 +843,51 @@ expect fault_of("# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 |\n") == Err({ line
 expect fault_of("# T\n\n| a | b |\n|---|---|\n| 1 | 2 | 3 |\n") == Err({ line: 5, fault: TableRowWidth })
 expect fault_of("# T\n\n| a | b |\n|---|---|\n| 1 |  |\n") == Err({ line: 5, fault: EmptyCell })
 expect fault_of("# T\n\n| a | **b |\n|---|---|\n") == Err({ line: 3, fault: UnclosedStyle })
+
+expect fault_of("# T\n\n![A sun](sun.png)\n") == Ok({})
+expect fault_of("# T\n\n![A sun](sun-2.jpg)\n\n![A plan](plan.svg)\n\nAfter.\n") == Ok({})
+expect fault_of("# T\n\n![A sun](sun.png) and more\n") == Err({ line: 3, fault: NotAnImageLine })
+expect fault_of("# T\n\n![A sun](sun.png)\nmore\n") == Err({ line: 4, fault: NotAnImageLine })
+expect fault_of("# T\n\n![A sun](sun.png\n") == Err({ line: 3, fault: NotAnImageLine })
+expect fault_of("# T\n\n![A sun]\n") == Err({ line: 3, fault: NotAnImageLine })
+expect fault_of("# T\n\n![A sun(sun.png)\n") == Err({ line: 3, fault: NotAnImageLine })
+expect fault_of("# T\n\n![A](b.png) (c)\n") == Err({ line: 3, fault: NotAnImageLine })
+expect fault_of("# T\n\nWords.\n![A sun](sun.png)\n") == Err({ line: 4, fault: NoBlankLineBefore })
+expect fault_of("# T\n\n![ ](sun.png)\n") == Err({ line: 3, fault: NoImageDescription })
+expect fault_of("# T\n\n![A](notes/sun.png)\n") == Err({
+	line: 3,
+	fault: NotAnImageFile({ file: "notes/sun.png", problem: InAFolder }),
+})
+expect fault_of("# T\n\n![A](../sun.png)\n") == Err({
+	line: 3,
+	fault: NotAnImageFile({ file: "../sun.png", problem: InAFolder }),
+})
+expect fault_of("# T\n\n![A](sun.gif)\n") == Err({
+	line: 3,
+	fault: NotAnImageFile({ file: "sun.gif", problem: NotAPicture }),
+})
+expect fault_of("# T\n\n![A](..png)\n") == Err({
+	line: 3,
+	fault: NotAnImageFile({ file: "..png", problem: NotAName }),
+})
+
+# The image block holds the file and the description as written, trimmed.
+expect
+	Parse.note("# T\n\n![ A sun, *low* ](sun.png)\n").map_ok(
+		|note|
+			note.blocks.map(
+				|block|
+					match block {
+						Image({ file, description }) => "${file.to_str()}|${description}"
+						_ => "another kind"
+					},
+			),
+	) == Ok(["sun.png|A sun, *low*"])
+
+expect Parse.problem_message({
+	line: 4,
+	fault: NotAnImageFile({ file: "a/b.png", problem: InAFolder }),
+}) == "line 4: `a/b.png` names a folder; an image is a file beside the note, named with no `/`"
 
 expect Parse.problem_message({
 	line: 7,

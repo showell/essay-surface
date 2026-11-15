@@ -127,11 +127,15 @@ func (n *note) loadFormat(renderer, text string) {
 }
 
 // What a .note's page adds to a markdown note's: the subtitle's look, a
-// diagram's frame, and the line that says a note can't be shown.
+// diagram's frame, a picture scaled to the column with its caption under it,
+// and the line that says a note can't be shown.
 const formatStyle = `<style>
 .subtitle{color:var(--muted);font-style:italic}
 figure.dot{margin:0 0 1rem;overflow-x:auto}
 figure.dot svg{max-width:100%;height:auto}
+figure.image{margin:0 0 1rem}
+figure.image img{display:block;max-width:100%;height:auto;border:1px solid var(--rule)}
+figure.image figcaption{color:var(--muted);font:.9rem system-ui,sans-serif;margin-top:.4rem}
 .dot-error,.note-problem{color:#b3261e;font:.9rem system-ui,sans-serif}
 </style>
 `

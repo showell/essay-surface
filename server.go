@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"html"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -43,6 +44,51 @@ func noteName(name string) bool {
 	return true
 }
 
+// imageTypes are the pictures a note may show, by extension, each with the
+// type it is served as.
+var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml"}
+
+// imageType is a picture's content type, if its file name is one a note may
+// show (format/ImageFile.roc): a note's name, then .png, .jpg or .svg. So no
+// folder, no "..", no hidden file and no other kind of file is served.
+func imageType(name string) (string, bool) {
+	ext := filepath.Ext(name)
+	typ, ok := imageTypes[ext]
+	if !ok || !noteName(strings.TrimSuffix(name, ext)) {
+		return "", false
+	}
+	return typ, true
+}
+
+// serveImage sends a picture from the notes folder. It opens the file without
+// following a link, and sends only a regular file, so a name can't reach a
+// file outside the folder; the open doesn't wait, so a pipe by a picture's
+// name can't hold the request. The browser keeps no copy, so a picture redrawn
+// under its name shows on the next load. The policy stops an SVG opened by
+// itself from running a script on the surface's origin.
+func (s *store) serveImage(w http.ResponseWriter, r *http.Request, name, typ string) {
+	f, err := os.OpenFile(filepath.Join(s.dir, name), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", typ)
+	h.Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	if _, err := io.Copy(w, f); err != nil {
+		log.Printf("%s: %v", name, err)
+	}
+}
+
 func (s *store) serveIndex(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	page, err := s.indexPage()
@@ -59,6 +105,10 @@ func (s *store) serveNote(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/notes/")
 	if noteName(name) {
 		s.redirectToNote(w, r, name)
+		return
+	}
+	if typ, ok := imageType(name); ok {
+		s.serveImage(w, r, name, typ)
 		return
 	}
 	if !validName(name) {
