@@ -24,7 +24,6 @@ local dir = arg("dir", "notes")
 local rounds = arg("rounds", 200)
 local per = arg("per", 3)
 local big_n = arg("big", 100)
-const BIG = "gopher-roc-demo.md"
 const RUN = ".run/bench"
 -- The most CPU a request may take in each phase, in microseconds: a
 -- little over twice what the real notes took on 2026-11-13 (index 140 and
@@ -133,18 +132,34 @@ function phase_index(rounds)
   return out
 end
 
-function phase_notes(rounds)
+-- The largest note in a folder by its file's size, so the bench's "largest
+-- note" is that folder's own, whatever notes it holds.
+function largest_note(folder)
+  local best = ""
+  local best_size = -1
+  for e in walk_all(folder, {depth = 1, kind = "file"}) do
+    local name = basename(e.path)
+    if (ends_with(name, ".md") or ends_with(name, ".note")) and e.size > best_size then
+      best = name
+      best_size = e.size
+    end
+  end
+  if best == "" then fail("measure_server: no note in " .. folder) end
+  return best
+end
+
+function phase_notes(rounds, big)
   local out = {lines = {}, medians = {}, bad = 0}
   local notes = note_urls()
   push(out.lines, #notes .. " notes in the index")
   -- A note's page is made on its first request; time the kept pages.
   timed(notes)
   report(out, "notes, no comments", timed(notes))
-  report(out, "largest note, no comments", timed(repeat_url(essay_base() .. "/notes/" .. BIG, rounds)))
+  report(out, "largest note, no comments", timed(repeat_url(essay_base() .. "/notes/" .. big, rounds)))
   return out
 end
 
-function phase_comments(rounds, per, big_n)
+function phase_comments(rounds, per, big_n, big)
   local out = {lines = {}, medians = {}, bad = 0}
   local names = essay_names(http_get(essay_base() .. "/").body)
   local notes = {}
@@ -161,18 +176,18 @@ function phase_comments(rounds, per, big_n)
   local wanted = 0
   for n in names do
     local count = per
-    if n == BIG then count = big_n end
+    if n == big then count = big_n end
     wanted = wanted + comments_for(n, RUN .. "/pages/" .. n, count, posts)
     yield()
   end
   local made = post_all(posts)
-  push(out.lines, "posted " .. made .. " comments of " .. wanted .. " (" .. per .. " a note, " .. big_n .. " on " .. BIG .. ")")
+  push(out.lines, "posted " .. made .. " comments of " .. wanted .. " (" .. per .. " a note, " .. big_n .. " on " .. big .. ")")
   if made ~= wanted then fail("only " .. made .. " of " .. wanted .. " comments were taken") end
   -- The first request for each page makes it with its comments; time the
   -- kept pages after.
   timed(notes)
   report(out, "notes, with comments", timed(notes))
-  report(out, "largest note, with comments", timed(repeat_url(essay_base() .. "/notes/" .. BIG, rounds)))
+  report(out, "largest note, with comments", timed(repeat_url(essay_base() .. "/notes/" .. big, rounds)))
   return out
 end
 
@@ -195,6 +210,8 @@ essay_build()
 essay_fresh(RUN)
 mkdir(RUN .. "/pages")
 must(run({"cp", "-rp", dir, RUN .. "/notes"}, {timeout_ms = 60000, tail = 5}))
+local big = largest_note(RUN .. "/notes")
+print("largest note: " .. big)
 local all = {lines = {}, medians = {}}
 local verdicts = {}
 local before = essay_load()
@@ -207,11 +224,11 @@ for l in lines(read(RUN .. "/index.log")) do
 end
 
 job = essay_start(RUN .. "/notes", RUN .. "/comments", RUN .. "/notes.log")
-r = attempt(phase_notes, rounds)
+r = attempt(phase_notes, rounds, big)
 push(verdicts, phase_end("notes", job, RUN .. "/notes.log", r, CPU_BUDGET_US.notes, all))
 
 job = essay_start(RUN .. "/notes", RUN .. "/comments", RUN .. "/comments.log")
-r = attempt(phase_comments, rounds, per, big_n)
+r = attempt(phase_comments, rounds, per, big_n, big)
 push(verdicts, phase_end("comments", job, RUN .. "/comments.log", r, CPU_BUDGET_US.comments, all))
 
 local after = essay_load()
