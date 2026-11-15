@@ -1,0 +1,165 @@
+-- prune_notes.shale: keeps the newest notes in a data folder and removes the
+-- rest, because the essay surface is for transient notes and never keeps
+-- them long. A note that drafts something durable is promoted to its repo
+-- before it rolls off; this script never asks.
+--
+-- A note is a `.md` or `.note` file directly in notes/. The `keep` newest by
+-- modified time stay (a tie goes to the name that sorts first). Every other
+-- file in notes/ (an image, a patch) is an attachment: it stays while a kept
+-- note's text names it, and goes otherwise. A comment file,
+-- comments/<file>.jsonl, goes when its note does, and so does one whose note
+-- is already gone. Each removal is one printed line; dry=1 prints them and
+-- removes nothing.
+--
+--   cd /home/steve && shale repos:essay-surface/scripts/prune_notes.shale data=essay-dogfood
+--   ... data=essay-dogfood keep=20 dry=1
+--   ... self_test=1     its plants, in a scratch folder, then nothing else
+-- budget: steps=50000000
+
+function is_note(name)
+  return ends_with(name, ".md") or ends_with(name, ".note")
+end
+
+-- What a prune of `data` would do: {kept, removed}, each a list of paths.
+function plan_prune(data, keep)
+  if keep < 1 then fail("prune_notes: keep must be at least 1, not " .. keep) end
+  local notes_dir = data .. "/notes"
+  local comments_dir = data .. "/comments"
+  if not exists(notes_dir) then fail("prune_notes: no notes folder at " .. notes_dir) end
+  local notes = {}
+  local attachments = {}
+  for e in walk_all(notes_dir, {depth = 1, kind = "file"}) do
+    local name = basename(e.path)
+    if is_note(name) then
+      push(notes, {name = name, path = e.path, modified = stat(e.path).modified})
+    else
+      push(attachments, {name = name, path = e.path})
+    end
+  end
+  sort(notes, "name")
+  sort(notes, "modified", "desc")
+  local kept = {}
+  local removed = {}
+  local kept_names = {}
+  local kept_text = ""
+  local i = 0
+  for n in notes do
+    i = i + 1
+    if i <= keep then
+      push(kept, n.path)
+      kept_names[n.name] = true
+      kept_text = kept_text .. read(n.path) .. "\n"
+    else
+      push(removed, n.path)
+    end
+  end
+  sort(attachments, "name")
+  for a in attachments do
+    if contains(kept_text, a.name) then push(kept, a.path) else push(removed, a.path) end
+  end
+  if exists(comments_dir) then
+    local comment_files = {}
+    for e in walk_all(comments_dir, {depth = 1, kind = "file"}) do push(comment_files, e.path) end
+    sort(comment_files)
+    for c in comment_files do
+      local name = basename(c)
+      local note = name
+      if ends_with(name, ".jsonl") then note = sub(name, 1, #name - 6) end
+      if has_key(kept_names, note) then push(kept, c) else push(removed, c) end
+    end
+  end
+  return {kept = kept, removed = removed}
+end
+
+function prune(data, keep, dry)
+  local p = plan_prune(data, keep)
+  for path in p.removed do
+    if dry then print("would remove " .. path) else remove(path) print("removed " .. path) end
+  end
+  local verb = "removed"
+  if dry then verb = "would remove" end
+  print("prune_notes: kept " .. #p.kept .. " files, " .. verb .. " " .. #p.removed)
+  return p
+end
+
+function plant(dir, name, text, stamp)
+  create(dir .. "/" .. name, text)
+  must(run({"touch", "-d", stamp, real(dir .. "/" .. name)}, {timeout_ms = 5000, tail = 3}))
+end
+
+function expect_same(what, got, want)
+  local g = join(got, " ")
+  local w = join(want, " ")
+  if g ~= w then fail("prune_notes self_test: " .. what .. ": got [" .. g .. "], want [" .. w .. "]") end
+end
+
+function self_test()
+  if not exists(".run") then mkdir(".run") end
+  local root = fresh_dir(".run", "prune_notes_test")
+  local n = root .. "/notes"
+  local c = root .. "/comments"
+  mkdir(n)
+  mkdir(c)
+  -- Three notes by age, a tie between the two newest, an image the newest
+  -- names, an image only the oldest names, and a patch nothing names.
+  plant(n, "b-new.note", "new, shows keep.png\n", "2026-11-15 12:00")
+  plant(n, "a-new.md", "tied with b-new\n", "2026-11-15 12:00")
+  plant(n, "old.md", "names old.png\n", "2026-11-01 12:00")
+  plant(n, "keep.png", "png", "2026-10-01 12:00")
+  plant(n, "old.png", "png", "2026-10-01 12:00")
+  plant(n, "loose.patch", "patch", "2026-10-01 12:00")
+  plant(c, "b-new.note.jsonl", "{}\n", "2026-11-15 12:00")
+  plant(c, "old.md.jsonl", "{}\n", "2026-11-01 12:00")
+  plant(c, "gone.md.jsonl", "{}\n", "2026-11-01 12:00")
+
+  -- keep=2: both tied newest stay, the old note and everything only it needs go.
+  local p = plan_prune(root, 2)
+  expect_same("kept at keep=2", p.kept, {n .. "/a-new.md", n .. "/b-new.note", n .. "/keep.png", c .. "/b-new.note.jsonl"})
+  expect_same("removed at keep=2", p.removed, {n .. "/old.md", n .. "/loose.patch", n .. "/old.png", c .. "/gone.md.jsonl", c .. "/old.md.jsonl"})
+
+  -- keep=1: the tie goes to the name that sorts first, so b-new and its comment go.
+  local p1 = plan_prune(root, 1)
+  expect_same("kept at keep=1", p1.kept, {n .. "/a-new.md"})
+
+  -- keep=9: every note stays, so only the unnamed patch and the orphan comment go.
+  local p9 = plan_prune(root, 9)
+  expect_same("removed at keep=9", p9.removed, {n .. "/loose.patch", c .. "/gone.md.jsonl"})
+
+  -- A dry run removes nothing; a real one removes exactly the plan.
+  prune(root, 2, true)
+  if not exists(n .. "/old.md") then fail("prune_notes self_test: a dry run removed a file") end
+  prune(root, 2, false)
+  for path in p.removed do if exists(path) then fail("prune_notes self_test: still there: " .. path) end end
+  for path in p.kept do if not exists(path) then fail("prune_notes self_test: removed a kept file: " .. path) end end
+
+  -- keep=0 and a folder with no notes/ are refused.
+  local r0 = attempt(plan_prune, root, 0)
+  if r0.ok then fail("prune_notes self_test: keep=0 was not refused") end
+  local rn = attempt(plan_prune, root .. "/comments", 2)
+  if rn.ok then fail("prune_notes self_test: a folder with no notes/ was not refused") end
+
+  remove_tree(root)
+
+  -- A folder past one walk part (256 entries) is read whole: 300 notes, keep=20.
+  local big = fresh_dir(".run", "prune_notes_big")
+  mkdir(big .. "/notes")
+  local i = 1
+  while i <= 300 do
+    create(big .. "/notes/n" .. (1000 + i) .. ".md", "x\n")
+    i = i + 1
+  end
+  local pb = plan_prune(big, 20)
+  if #pb.kept ~= 20 or #pb.removed ~= 280 then fail("prune_notes self_test: 300 notes at keep=20 gave " .. #pb.kept .. " kept, " .. #pb.removed .. " removed") end
+  remove_tree(big)
+  print("prune_notes self_test: PASS")
+end
+
+local data = arg("data", "")
+local keep = arg("keep", 20)
+local dry = arg("dry", false)
+if arg("self_test", false) then
+  self_test()
+else
+  if data == "" then fail("prune_notes: name the data folder, data=essay-dogfood") end
+  prune(data, keep, dry)
+end

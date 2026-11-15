@@ -6,7 +6,8 @@
 --   race       the tests under the race detector
 --   anchoring  the anchoring simulation on the real notes, held to its rates
 --   audit      scripts/check_rendered_notes.shale: every real note rendered, nothing left over
---   dates      scripts/check_note_dates.shale: a fresh clone gives the same index
+--   dates      scripts/check_note_dates.shale: a fresh clone gives the same index,
+--              on the sample notes (the real notes are never in git)
 --   bench      scripts/measure_server.shale on a copy of the real notes: CPU a request
 --              held to budgets a busy box cannot break; wall times judged
 --              only when the box is quiet
@@ -17,7 +18,7 @@
 --   shale scripts/check_before_release.shale dir=/abs/path/notes
 -- The real notes are only read: the bench copies them first, and every
 -- server's comments go to a scratch folder under .run.
-local dir = arg("dir", "/home/steve/showell_repos/essay-repl-server/notes")
+local dir = arg("dir", "/home/steve/essay-dogfood/notes")
 
 -- One stage run: its verdict and times, and the last s.shown lines of its
 -- own output. Gives "PASS" or "FAIL".
@@ -49,7 +50,7 @@ local stages = {
   {name = "anchoring", argv = {"go", "test", "-count=1", "-run", "TestSimulateAnchoring", "-v", "."},
     opts = {cpu_budget_ms = 45000, env = {ESSAY_NOTES = dir}, re = "cases|->|--- |^ok|^FAIL|_test.go"}, shown = 17},
   {name = "audit", argv = {"shale", "scripts/check_rendered_notes.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 6},
-  {name = "dates", argv = {"shale", "scripts/check_note_dates.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 4},
+  {name = "dates", argv = {"shale", "scripts/check_note_dates.shale"}, opts = {cpu_budget_ms = 20000}, shown = 4},
   {name = "bench", argv = {"shale", "scripts/measure_server.shale", "dir=" .. dir, "rounds=500"}, opts = {cpu_budget_ms = 40000}, shown = 6},
 }
 local failed = {}
