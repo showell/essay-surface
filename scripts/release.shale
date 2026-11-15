@@ -14,8 +14,9 @@
 --   5. The old server is stopped, its binary kept as bin/essay-surface.prev,
 --      and the new one started in its place.
 --   6. The checks: the index lists the same notes, a note renders, and on
---      every note with comments each comment is where it was (the same
---      block, or the orphans), and still in its file.
+--      every note with comments (.md or .note) each comment is where it was
+--      (the same block, or the orphans), and still in its file. Step 4 already
+--      stops the release if the old server's page doesn't show a comment.
 --   7. A failed check puts the old binary back, starts it and checks it
 --      the same way: a failed release ends where it started, and exits 1.
 -- The last line says what is running and how to roll back. rollback=1
@@ -114,7 +115,7 @@ function rel_commented(t)
   local out = {}
   if not exists(t.comments) then return out end
   for f in ls(t.comments) do
-    if ends_with(f, ".md.jsonl") then push(out, {note = strip_suffix(f, ".jsonl"), file = t.comments .. "/" .. f}) end
+    if ends_with(f, ".md.jsonl") or ends_with(f, ".note.jsonl") then push(out, {note = strip_suffix(f, ".jsonl"), file = t.comments .. "/" .. f}) end
   end
   return out
 end
@@ -400,7 +401,15 @@ if exists(t.comments) then
   print("comments kept: " .. files .. " files, " .. n .. " comments, in " .. t.dir .. "/comments, each compared")
 end
 before.look = rel_look(t, t.dir .. "/before", before.ids)
-print("the old server's index and " .. #rel_commented(t) .. " commented notes kept in " .. t.dir .. "/before")
+-- A comment the old server's page doesn't show is "missing" before and after
+-- alike, so step 6 would pass it unseen: the release stops here instead,
+-- with nothing touched.
+for note in keys(before.ids) do
+  for id in before.ids[note] do
+    if before.look.places[note][id] == "missing" then fail("comment " .. id .. " on " .. note .. " is not on the old server's page, so the release could not check it; nothing touched") end
+  end
+end
+print("the old server's index and " .. #rel_commented(t) .. " commented notes kept in " .. t.dir .. "/before, every comment found on its page")
 
 -- 5 and 6, and 7 when they fail.
 local done = rel_install_child(t, before)
