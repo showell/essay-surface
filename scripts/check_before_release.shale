@@ -4,7 +4,8 @@
 -- SHIP", or "NOT SAFE" and the stages that failed.
 --   commit     scripts/check_before_commit.shale: gofmt, vet, the JS, the tests, the smoke
 --   race       the tests under the race detector
---   anchoring  the anchoring simulation on the real notes, held to its rates
+--   anchoring  the anchoring simulation, held to its rates, on the sample notes:
+--              it reads `.md` notes only, and the live ones are `.note`
 --   audit      scripts/check_rendered_notes.shale: every real note rendered, nothing left over
 --   dates      scripts/check_note_dates.shale: a fresh clone gives the same index,
 --              on the sample notes (the real notes are never in git)
@@ -43,12 +44,12 @@ print("box: load " .. load.said .. "; notes: " .. dir)
 local stages = {
   {name = "commit", argv = {"shale", "scripts/check_before_commit.shale"}, opts = {cpu_budget_ms = 40000}, shown = 6},
   -- The simulation is pure and runs on one goroutine, and is ten times
-  -- slower under -race; the anchoring stage runs it on the real notes.
+  -- slower under -race; the anchoring stage runs it on its own.
   {name = "race", argv = {"go", "test", "-race", "-count=1", "-skip", "TestSimulateAnchoring", "."}, opts = {cpu_budget_ms = 40000}, shown = 2},
   -- About 15 s of CPU: 187,000 simulated edits, most of it the similarity
   -- search for the blocks that were moved, merged or deleted.
   {name = "anchoring", argv = {"go", "test", "-count=1", "-run", "TestSimulateAnchoring", "-v", "."},
-    opts = {cpu_budget_ms = 45000, env = {ESSAY_NOTES = dir}, re = "cases|->|--- |^ok|^FAIL|_test.go"}, shown = 17},
+    opts = {cpu_budget_ms = 45000, re = "cases|->|--- |^ok|^FAIL|_test.go"}, shown = 17},
   {name = "audit", argv = {"shale", "scripts/check_rendered_notes.shale", "dir=" .. dir}, opts = {cpu_budget_ms = 20000}, shown = 6},
   {name = "dates", argv = {"shale", "scripts/check_note_dates.shale"}, opts = {cpu_budget_ms = 20000}, shown = 4},
   {name = "bench", argv = {"shale", "scripts/measure_server.shale", "dir=" .. dir, "rounds=500"}, opts = {cpu_budget_ms = 40000}, shown = 6},
