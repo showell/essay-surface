@@ -249,8 +249,8 @@ func (s *store) handler() http.Handler {
 }
 
 const style = `<style>
-:root{--bg:#fdfdfb;--fg:#1d1d1b;--muted:#6b6b66;--rule:#e3e2dc;--code-bg:#f3f2ed;--link:#1f5fa8}
-@media (prefers-color-scheme:dark){:root{--bg:#161615;--fg:#e6e5e0;--muted:#9a9993;--rule:#33332f;--code-bg:#22221f;--link:#7fb0ea}}
+:root{--bg:#fdfdfb;--fg:#1d1d1b;--muted:#6b6b66;--rule:#e3e2dc;--code-bg:#f3f2ed;--link:#1f5fa8;--reply-bg:#eef3fa}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--fg:#e6e5e0;--muted:#9a9993;--rule:#33332f;--code-bg:#22221f;--link:#7fb0ea;--reply-bg:#1d242e}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:18px/1.6 Charter,"Bitstream Charter","Sitka Text",Cambria,Georgia,serif;-webkit-text-size-adjust:100%}
 main{max-width:42rem;margin:0 auto;padding:1.5rem 1rem 4rem}
@@ -267,6 +267,10 @@ pre code{background:none;padding:0;font-size:.8rem}
 table{border-collapse:collapse;font-size:.9rem}
 th,td{border:1px solid var(--rule);padding:.35rem .6rem;vertical-align:top}
 th{background:var(--code-bg);text-align:left}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover,th.sortable:focus-visible{color:var(--link)}
+.sort-mark{margin-left:.35em;font-size:.75em;color:var(--muted)}
+th.sorted .sort-mark{color:var(--link)}
 hr{border:0;border-top:1px solid var(--rule);margin:2rem 0}
 img{max-width:100%}
 nav{font:.9rem system-ui,sans-serif;margin-bottom:1rem}
@@ -300,7 +304,7 @@ func notePage(n *note, cs []*Comment, places []placed) []byte {
 		}
 	}
 	var b bytes.Buffer
-	b.Grow(len(n.body) + len(style) + len(commentStyle) + len(n.style) + len(commentScript) + len(n.scripts) + 300*len(cs) + 12*len(n.blocks) + 1024)
+	b.Grow(len(n.body) + len(style) + len(commentStyle) + len(n.style) + len(commentScript) + len(tablesScript) + len(n.scripts) + 300*len(cs) + 12*len(n.blocks) + 1024)
 	pageHead(&b, n.title)
 	b.WriteString(commentStyle)
 	b.WriteString(n.style)
@@ -342,6 +346,7 @@ func notePage(n *note, cs []*Comment, places []placed) []byte {
 	b.Write(name)
 	b.WriteString(";</script>\n")
 	b.WriteString(commentScript)
+	b.WriteString(tablesScript)
 	b.WriteString(n.scripts)
 	b.WriteString("</main></body></html>\n")
 	return b.Bytes()

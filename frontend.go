@@ -11,7 +11,13 @@ var commentCSS string
 //go:embed comments.js
 var commentJS string
 
+// tablesJS makes every table's rows sortable by a click on its heading.
+//
+//go:embed tables.js
+var tablesJS string
+
 var (
 	commentStyle  = "<style>\n" + commentCSS + "</style>\n"
 	commentScript = "<script>\n" + commentJS + "</script>\n"
+	tablesScript  = "<script>\n" + tablesJS + "</script>\n"
 )

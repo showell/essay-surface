@@ -6,7 +6,7 @@
 .cpin>.cbtn{top:-2.4rem}
 .cmts{margin:-.4rem 0 1.1rem;padding:.1rem 0 .1rem .85rem;border-left:2px solid var(--rule);font:.85rem/1.45 system-ui,sans-serif}
 li>.cmts{margin:.3rem 0 .5rem}
-.cmt{margin:.45rem 0}
+.cmt{margin:.45rem 0;padding:.35rem .6rem;border-radius:6px;background:var(--reply-bg)}
 .cmt .who{color:var(--muted);font-size:.78rem}
 .cmt .who b{color:var(--fg);font-weight:600}
 .cmt .said{white-space:pre-wrap;overflow-wrap:anywhere}

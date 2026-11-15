@@ -78,8 +78,12 @@ if gofmt_result.out ~= "" then
 end
 report_pass("gofmt", gofmt_result, "")
 report_pass("vet", stage("vet", {"go", "vet", "."}, {cpu_budget_ms = 20000}), "")
--- go test embeds comments.js but never parses it.
-report_pass("js", stage("js", {"node", "--check", "comments.js"}, {cpu_budget_ms = 5000, want = "check: the front end's syntax, which go test cannot see"}), "")
+-- go test embeds comments.js and tables.js but never parses them.
+report_pass("js comments.js", stage("js comments.js", {"node", "--check", "comments.js"}, {cpu_budget_ms = 5000, want = "check: the front end's syntax, which go test cannot see"}), "")
+report_pass("js tables.js", stage("js tables.js", {"node", "--check", "tables.js"}, {cpu_budget_ms = 5000, want = "check: the front end's syntax, which go test cannot see"}), "")
+-- The sortable tables' kinds and orders, in node: tables_test.cjs.
+local tables_result = stage("tables", {"node", "tables_test.cjs"}, {cpu_budget_ms = 5000, want = "test: the sortable tables' pure half, which go test cannot run"})
+report_pass("tables", tables_result, ": " .. #re_lines(tables_result.out, "^ok: ") .. " checks")
 -- The budget covers compiling the tests after an edit (about 4 s of CPU)
 -- and running them (about 3 s).
 local test_result = stage("test", {"go", "test", "-count=1", "-v", "."}, {cpu_budget_ms = 30000})

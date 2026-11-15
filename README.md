@@ -19,6 +19,8 @@ The stages are scripts of their own in `scripts/`, listed in its README: `check_
 
 A `.note` shows a picture with a line of its own, `![description](file.png)`: the file sits beside the note in its folder, and the description is the picture's alt text and its caption. A reply to the picture is a reply like any other, so a sign-off goes on the picture itself. The server answers `GET /notes/<file>` with the picture only for a name `format/ImageFile.roc` allows (a note's name, then `.png`, `.jpg` or `.svg`): no folder, no `..`, no hidden file, no link, no other extension. It sends it with `Cache-Control: no-store`, so a picture redrawn under its name shows on the next load. A markdown note's `![alt](file.png)` is served the same way.
 
+A table on either kind of note sorts by a click on a column's heading, and a second click reverses it (`tables.js`, tested by `tables_test.cjs` in the commit check). A column whose every filled cell is a number or a date sorts as one, and any other sorts as text. The order lives only in the page: the table is one commentable block, so its replies stay with it whatever order its rows show.
+
 Pitfall: a `.note` that doesn't parse, or a renderer that fails, makes that note's page say why, and the rest are served as usual; the server logs it. A picture's name the format refuses (`frames/a.png`, `a.gif`, `Shot 1.png`) is such a problem, so rename the file to fit.
 
 Pitfall: a reply anchors to a picture's caption and its file name, not its pixels. A picture redrawn under the same name keeps its sign-off, so a new version of a picture gets a new name (`frame-001.png`), and the old sign-off then shows as made on an earlier version, or among the comments on text that is gone.
