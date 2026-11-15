@@ -1,0 +1,308 @@
+-- check_note.shale: refuses a .note whose diagrams a reader can't read at a
+-- glance. The note is parsed by render-note, the renderer the server runs, so
+-- a note that doesn't parse fails with the parser's own line. Each diagram is
+-- then drawn by the page's own viz.js with the page's defaults
+-- (scripts/measure_diagrams.cjs), and its drawing is measured and judged by
+-- the limits below. It prints one PASS or FAIL line a diagram, with what it
+-- measured, and fails naming the note when any diagram fails.
+--
+--   cd /home/steve && shale repos:essay-surface/scripts/check_note.shale data=essay-dogfood note=NAME.note
+--   ... self_test=1     its plants, in a scratch folder, then nothing else
+--
+-- render-note is built here first when it is missing or older than format/.
+-- The script finds the repo as its root when run there (the commit check
+-- runs its self-test so), and through the repos: mount otherwise.
+-- budget: steps=50000000
+
+-- The note's column, measured from the CSS. server.go's `main` is
+-- `max-width:42rem` with `padding:1.5rem 1rem 4rem` under
+-- `*{box-sizing:border-box}`, and nothing sets the root font, so a rem is
+-- 16px: 672px less 2 x 16px of padding is 640px of column on any screen
+-- wider than that. note.go's `figure.dot` has no side margin, and its
+-- `figure.dot svg{max-width:100%;height:auto}` scales a wider drawing down
+-- to the column, its 11pt labels with it. So a diagram over 640px is drawn
+-- with its text smaller than the page sets it.
+const COLUMN_PX = 640
+
+-- One screen. A 1366x768 laptop, the smallest screen in common use, shows
+-- about 650px of page under the browser's tabs and address bar; 600px leaves
+-- room for the line that introduces the diagram, so the whole drawing and
+-- what it's for are seen at once, with no scrolling up and down it.
+const SCREEN_PX = 600
+
+-- At a glance. A reader takes in about ten boxes and a dozen arrows without
+-- tracing them one by one; past that the diagram is a map to study, and a
+-- note is better served by two diagrams, or a table. Two clusters say one
+-- contrast (this side, that side); more turn into nested boxes. An edge's
+-- label is read along the arrow, so it stays a few words: 24 characters is
+-- "builds against, pins" or "the text, as arguments".
+const MAX_NODES = 10
+const MAX_EDGES = 12
+const MAX_CLUSTERS = 2
+const MAX_LABEL_CHARS = 24
+
+-- The most of a note's text one argument to render-note carries, as note.go's
+-- renderArgBytes: Linux refuses an argument over 128 KiB.
+const RENDER_ARG_BYTES = 32000
+
+-- Where the repo's own files are: the root when the script runs in the repo,
+-- the repos: mount otherwise.
+function repo_dir()
+  if exists("scripts/check_note.shale") and exists("format/render_note.roc") then return "." end
+  return "repos:essay-surface"
+end
+
+function under(repo, name)
+  if repo == "." then return name end
+  return repo .. "/" .. name
+end
+
+-- render-note, built from format/ by the pinned Roc when it is missing or
+-- older than any of format/'s files.
+function renderer(repo)
+  local bin = under(repo, "render-note")
+  local stale = not exists(bin)
+  if not stale then
+    local built = stat(bin).modified
+    for p in glob(under(repo, "format/*")) do
+      if stat(p).modified > built then stale = true end
+    end
+  end
+  if stale then
+    local pin = trim(read(under(repo, "format/roc-version")))
+    local roc = real("tools:roc-" .. pin .. "/roc")
+    must(run({roc, "build", "format/render_note.roc", "--opt=dev", "--output=render-note"}, {timeout_ms = 120000, tail = 20, cwd = repo}))
+    print("check_note: built render-note")
+  end
+  return real(bin)
+end
+
+-- A note's text as render-note's arguments, each at most RENDER_ARG_BYTES,
+-- cut after a line's end, so never inside a character.
+function render_parts(text, where)
+  local parts = {}
+  local part = ""
+  local pieces = split(text, "\n")
+  local i = 0
+  for piece in pieces do
+    i = i + 1
+    local line = piece
+    if i < #pieces then line = piece .. "\n" end
+    if #line > RENDER_ARG_BYTES then fail("check_note: " .. where .. ": line " .. i .. " is over " .. RENDER_ARG_BYTES .. " bytes, more than one argument to render-note carries") end
+    if #part + #line > RENDER_ARG_BYTES then
+      push(parts, part)
+      part = ""
+    end
+    part = part .. line
+  end
+  push(parts, part)
+  return parts
+end
+
+function replace_all(s, old, new)
+  return join(split(s, old), new)
+end
+
+-- Text as the browser reads it from between tags, the four escapes
+-- format/Page.roc makes undone.
+function unescaped(s)
+  return replace_all(replace_all(replace_all(replace_all(s, "&lt;", "<"), "&gt;", ">"), "&quot;", "\""), "&amp;", "&")
+end
+
+-- The note as render-note reads it: {sources}, each diagram's dot source in
+-- order, or {problem}, the parser's message with its line.
+function parsed(bin, text, where)
+  local argv = {bin}
+  for part in render_parts(text, where) do push(argv, part) end
+  local r = must(run(argv, {timeout_ms = 10000, whole = 4000000, want = "render-note: the renderer the server runs"}))
+  local body = json_read(r.out).body
+  if starts_with(body, "<p class=\"note-problem\">") then
+    return {problem = unescaped(between(body, "This note can't be shown. ", ".</p>"))}
+  end
+  local sources = {}
+  for part in drop(split(body, "<figure class=\"dot\""), 1) do
+    push(sources, unescaped(between(part, "<code class=\"language-dot\">", "\n</code>")))
+  end
+  return {sources = sources}
+end
+
+-- The line of each dot fence's opener, read as format/Parse.roc's fence_at
+-- reads fences: one opens on a line starting ```, and closes on a line that is
+-- ``` alone.
+function diagram_lines(text)
+  local out = {}
+  local in_fence = false
+  local n = 0
+  for l in split(text, "\n") do
+    n = n + 1
+    local t = trim(l)
+    if in_fence then
+      if t == "```" then in_fence = false end
+    elseif starts_with(t, "```") then
+      in_fence = true
+      if trim(sub(t, 4, #t)) == "dot" then push(out, n) end
+    end
+  end
+  return out
+end
+
+-- What the page's viz.js draws for each source, measured.
+function measured(repo, sources)
+  local r = must(run({"node", real(under(repo, "scripts/measure_diagrams.cjs"))}, {timeout_ms = 30000, whole = 1000000, stdin = json_write(sources), want = "check: the diagrams drawn by the page's own viz.js"}))
+  local out = json_read(r.out)
+  if #out ~= #sources then fail("check_note: measure_diagrams.cjs gave " .. #out .. " measures for " .. #sources .. " diagrams") end
+  return out
+end
+
+-- Why a measured diagram fails, each reason a phrase; none when it passes.
+function reasons(m)
+  local out = {}
+  if not m.drawn then
+    push(out, "viz.js can't draw it: " .. m.error)
+    return out
+  end
+  if m.width_px > COLUMN_PX then push(out, "too wide: " .. m.width_px .. "px, and the column is " .. COLUMN_PX .. "px, so its text would be shrunk to " .. (COLUMN_PX * 100 // m.width_px) .. "% of its size") end
+  if m.height_px > SCREEN_PX then push(out, "too tall: " .. m.height_px .. "px, past one screen, " .. SCREEN_PX .. "px") end
+  if m.nodes > MAX_NODES then push(out, "too many nodes: " .. m.nodes .. ", past " .. MAX_NODES) end
+  if m.edges > MAX_EDGES then push(out, "too many edges: " .. m.edges .. ", past " .. MAX_EDGES) end
+  if m.clusters > MAX_CLUSTERS then push(out, "too many clusters: " .. m.clusters .. ", past " .. MAX_CLUSTERS) end
+  if m.longest_label > MAX_LABEL_CHARS then push(out, "an edge label too long: \"" .. m.longest_label_text .. "\", " .. m.longest_label .. " characters, past " .. MAX_LABEL_CHARS) end
+  return out
+end
+
+function counted(n, noun)
+  if n == 1 then return n .. " " .. noun end
+  return n .. " " .. noun .. "s"
+end
+
+function measures_said(m)
+  if not m.drawn then return "not drawn" end
+  return m.width_px .. "x" .. m.height_px .. "px, " .. counted(m.nodes, "node") .. ", " .. counted(m.edges, "edge") .. ", " .. counted(m.clusters, "cluster") .. ", longest edge label " .. counted(m.longest_label, "character")
+end
+
+-- Every diagram in the note at path, judged: {problem} for a note that
+-- doesn't parse, else {lines, failed, diagrams}, a line a diagram. Prints
+-- nothing, so the self-test can read it.
+function judged(repo, bin, path)
+  local name = basename(path)
+  local text = read(path)
+  local p = parsed(bin, text, name)
+  if has_key(p, "problem") then return {problem = name .. " doesn't parse: " .. p.problem} end
+  local at = diagram_lines(text)
+  if #at ~= #p.sources then fail("check_note: " .. name .. ": render-note found " .. #p.sources .. " diagrams and the dot fences are " .. #at .. ", so their lines can't be named") end
+  local out = {}
+  local failed = 0
+  if #p.sources == 0 then return {lines = out, failed = 0, diagrams = 0} end
+  local ms = measured(repo, p.sources)
+  local k = 0
+  for m in ms do
+    k = k + 1
+    local why = reasons(m)
+    local head = name .. " diagram " .. k .. " (line " .. at[k] .. "): " .. measures_said(m)
+    if #why == 0 then
+      push(out, "PASS " .. head)
+    else
+      failed = failed + 1
+      push(out, "FAIL " .. head .. "; " .. join(why, "; "))
+    end
+  end
+  return {lines = out, failed = failed, diagrams = #ms}
+end
+
+function check(repo, path)
+  local j = judged(repo, renderer(repo), path)
+  if has_key(j, "problem") then fail("check_note: " .. j.problem) end
+  for l in j.lines do print(l) end
+  local name = basename(path)
+  if j.failed > 0 then fail("check_note: " .. name .. ": " .. j.failed .. " of " .. counted(j.diagrams, "diagram") .. " can't be read at a glance") end
+  print("check_note: " .. name .. ": PASS, " .. counted(j.diagrams, "diagram"))
+end
+
+-- A planted note holding one diagram.
+function plant_one(dir, name, dot)
+  create(dir .. "/" .. name, "# " .. name .. "\n\nA line before.\n\n```dot\n" .. dot .. "\n```\n")
+  return dir .. "/" .. name
+end
+
+-- A dot chain a0 -> a1 -> ... of n nodes, laid out so.
+function chain(n, attrs)
+  local s = "digraph { " .. attrs .. " "
+  local i = 1
+  while i < n do
+    s = s .. "a" .. (i - 1) .. " -> a" .. i .. "; "
+    i = i + 1
+  end
+  return s .. "}"
+end
+
+-- One planted note must fail for exactly its own reason.
+function expect_only(repo, bin, dir, name, dot, reason)
+  local j = judged(repo, bin, plant_one(dir, name, dot))
+  if has_key(j, "problem") then fail("check_note self_test: " .. name .. " didn't parse: " .. j.problem) end
+  local l = j.lines[1]
+  local cut = find(l, "; ")
+  local said = ""
+  if cut ~= nil then said = sub(l, cut + 2, #l) end
+  if j.failed ~= 1 or #split(said, "; ") ~= 1 or not starts_with(said, reason) then
+    fail("check_note self_test: " .. name .. ": want one reason, \"" .. reason .. "...\", got: " .. l)
+  end
+  print("ok: " .. l)
+end
+
+function self_test(repo)
+  local bin = renderer(repo)
+  if not exists(under(repo, ".run")) then mkdir(under(repo, ".run")) end
+  local dir = fresh_dir(under(repo, ".run"), "check_note_test")
+
+  -- A small diagram passes, and its line is the fence's.
+  local small = judged(repo, bin, plant_one(dir, "small.note", "digraph { rankdir=LR; a -> b [label=\"reads\"]; b -> c; }"))
+  if small.failed ~= 0 or #small.lines ~= 1 or not starts_with(small.lines[1], "PASS small.note diagram 1 (line 5): ") then fail("check_note self_test: the small diagram: " .. json_write(small)) end
+  print("ok: " .. small.lines[1])
+
+  -- Each limit alone. The wide and tall cases have few nodes and edges, and
+  -- the many-node and many-edge cases stay inside the column and the screen.
+  expect_only(repo, bin, dir, "wide.note", chain(9, "rankdir=LR; nodesep=0.1; ranksep=0.2; node [shape=box];"), "too wide: ")
+  expect_only(repo, bin, dir, "tall.note", chain(10, "ranksep=0.4;"), "too tall: ")
+  expect_only(repo, bin, dir, "nodes.note", "digraph { node [shape=point]; a; b; c; d; e; f; g; h; i; j; k; }", "too many nodes: 11")
+  expect_only(repo, bin, dir, "edges.note", "digraph { a -> b; a -> b; a -> b; a -> b; a -> b; a -> b; a -> b; b -> c; b -> c; b -> c; b -> c; b -> c; b -> c; }", "too many edges: 13")
+  expect_only(repo, bin, dir, "clusters.note", "digraph { subgraph cluster_a { a } subgraph cluster_b { b } subgraph cluster_c { c } }", "too many clusters: 3")
+  expect_only(repo, bin, dir, "label.note", "digraph { a -> b [label=\"builds against a sibling!\"]; }", "an edge label too long: \"builds against a sibling!\", 25 characters")
+
+  -- Every count at its limit passes: 10 nodes, 12 edges, 2 clusters and a
+  -- label of 24 characters, one fewer than the case above.
+  local full = judged(repo, bin, plant_one(dir, "full.note", "digraph { node [shape=point]; subgraph cluster_a { a; b; c; d; e } subgraph cluster_b { f; g; h; i; j } a -> f [label=\"builds against a sibling\"]; b -> g; c -> h; d -> i; e -> j; a -> b; b -> c; c -> d; d -> e; f -> g; g -> h; h -> i; }"))
+  if full.failed ~= 0 or find(full.lines[1], ", 10 nodes, 12 edges, 2 clusters, longest edge label 24 characters") == nil then fail("check_note self_test: the diagram at every limit: " .. json_write(full)) end
+  print("ok: " .. full.lines[1])
+
+  -- Two diagrams in one note: each judged, each with its own line.
+  create(dir .. "/two.note", "# Two\n\n```dot\ndigraph { a -> b }\n```\n\nBetween.\n\n```dot\ndigraph { a; b; c; d; e; f; g; h; i; j; k; }\n```\n")
+  local two = judged(repo, bin, dir .. "/two.note")
+  if two.failed ~= 1 or not starts_with(two.lines[1], "PASS two.note diagram 1 (line 3): ") or not starts_with(two.lines[2], "FAIL two.note diagram 2 (line 9): ") then fail("check_note self_test: two diagrams: " .. json_write(two)) end
+  print("ok: two diagrams, lines 3 and 9, the second failing")
+
+  -- A note that doesn't parse fails with the parser's line.
+  create(dir .. "/broken.note", "# Broken\n\n```dot\na -> b\n```\n")
+  local broken = judged(repo, bin, dir .. "/broken.note")
+  if not has_key(broken, "problem") or find(broken.problem, "line 3: ") == nil then fail("check_note self_test: the broken note: " .. json_write(broken)) end
+  print("ok: " .. broken.problem)
+
+  -- check stops on a failing note, and passes a good one.
+  if attempt(check, repo, dir .. "/nodes.note").ok then fail("check_note self_test: check passed a failing note") end
+  if not attempt(check, repo, dir .. "/small.note").ok then fail("check_note self_test: check failed the small note") end
+
+  remove_tree(dir)
+  print("check_note self_test: PASS")
+end
+
+local data = arg("data", "")
+local note = arg("note", "")
+local repo = repo_dir()
+if arg("self_test", false) then
+  self_test(repo)
+else
+  if data == "" or note == "" then fail("check_note: name the data folder and the note, data=essay-dogfood note=NAME.note") end
+  local path = data .. "/notes/" .. note
+  if not exists(path) then fail("check_note: no note at " .. path) end
+  if not ends_with(note, ".note") then fail("check_note: " .. note .. " isn't a .note") end
+  check(repo, path)
+end

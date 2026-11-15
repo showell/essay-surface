@@ -1,8 +1,8 @@
 -- check_before_commit.shale: the check for every edit, a few seconds. gofmt, vet, the
 -- front end's syntax, every Go test on the sample notes, the comment
 -- flow through the real server, and the .note path from its Roc to its
--- page (check_note_format.shale), and prune_notes.shale's self-test. It
--- stops at the first stage that fails.
+-- page (check_note_format.shale), and the self-tests of prune_notes.shale
+-- and check_note.shale. It stops at the first stage that fails.
 -- Each stage is held to a CPU budget, which a busy box does not break as
 -- it does wall time; a budget is several times the stage's usual cost, so
 -- only a real slowdown passes it.
@@ -89,4 +89,6 @@ report_pass("smoke", smoke_result, ": " .. #re_lines(smoke_result.out, "^ok: ") 
 local note_result = stage("note", {"shale", "scripts/check_note_format.shale"}, {cpu_budget_ms = 30000})
 report_pass("note", note_result, ": " .. #re_lines(note_result.out, "^ok: ") .. " checks, from the Roc to the page")
 report_pass("prune", stage("prune", {"shale", "scripts/prune_notes.shale", "self_test=1"}, {cpu_budget_ms = 10000}), "")
+local diagrams_result = stage("diagrams", {"shale", "scripts/check_note.shale", "self_test=1"}, {cpu_budget_ms = 15000})
+report_pass("diagrams", diagrams_result, ": " .. #re_lines(diagrams_result.out, "^ok: ") .. " planted cases")
 print("check before commit: PASS")
