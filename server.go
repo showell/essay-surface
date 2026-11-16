@@ -179,6 +179,10 @@ func (s *store) postComment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a comment: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	// A logged-in reply is signed by its account, whatever name it sends.
+	if user := accountOf(r); user != "" {
+		req.Name = user
+	}
 	cname, ctext, err := cleanComment(req.Name, req.Text)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

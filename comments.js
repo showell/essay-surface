@@ -14,6 +14,14 @@
     try { localStorage.setItem(NAME_KEY, n); } catch (e) { /* a private window: not remembered */ }
   }
 
+  // The account this browser is logged in as: the server signs its replies,
+  // so the form asks for no name. "" on a server without accounts (no
+  // /whoami) or over loopback, where the form asks as before.
+  var account = "";
+  fetch("/whoami").then(function (r) { return r.ok ? r.json() : { name: "" }; })
+    .then(function (who) { account = who.name || ""; })
+    .catch(function () { account = ""; });
+
   // The thread after block el, or null.
   function threadOf(el) {
     var next = el.nextElementSibling;
@@ -60,6 +68,7 @@
     var name = document.createElement("input");
     name.name = "name"; name.placeholder = "Your name"; name.maxLength = 80; name.required = true;
     name.autocomplete = "name"; name.value = storedName();
+    if (account) { name.value = account; name.hidden = true; name.required = false; }
     var text = document.createElement("textarea");
     text.name = "text"; text.rows = 3; text.placeholder = "Your comment"; text.required = true;
     var row = document.createElement("div");
@@ -92,7 +101,7 @@
         if (r.status === 201) return r.json();
         return r.text().then(function (t) { throw new Error(t.trim() || ("the server said " + r.status)); });
       }).then(function (c) {
-        storeName(name.value.trim());
+        if (!account) storeName(name.value.trim());
         thread.insertBefore(commentNode(c), form);
         label(btn, thread.querySelectorAll(".cmt").length);
         close();

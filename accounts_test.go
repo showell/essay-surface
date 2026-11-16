@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -258,6 +259,64 @@ func TestCheckOpen(t *testing.T) {
 	} {
 		if err := checkOpen(c.addr, c.dir); (err == nil) != c.ok {
 			t.Errorf("checkOpen(%q, %q): %v", c.addr, c.dir, err)
+		}
+	}
+}
+
+// A logged-in reply is signed by its account, whatever name the page sends;
+// over loopback, without an account, the typed name stands.
+func TestAccountsReplySignedByTheAccount(t *testing.T) {
+	loginWait = 0
+	hashRounds = 1000
+	dir := t.TempDir()
+	writeNote(t, dir, "a.md", commentNote, time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC))
+	a, err := openAccounts(filepath.Join(dir, "accounts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := a.wrap(testStore(t, dir).handler())
+	c := signUp(t, h)
+	page := ask(h, "GET", "/notes/a.md", "", nil, c)
+	hs := hashesOf(t, page.Body.String())
+	send := func(remote string, cookie *http.Cookie, name string) map[string]any {
+		req := httptest.NewRequest("POST", "/notes/a.md/comments", strings.NewReader(commentJSON(2, hs[2], name, "a reply")))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = remote
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("post from %s: %d %s", remote, rec.Code, rec.Body.String())
+		}
+		var got map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &got)
+		return got
+	}
+	if got := send("203.0.113.7:51000", c, "Mallory"); got["name"] != "steve" {
+		t.Errorf("a logged-in reply is signed %v", got["name"])
+	}
+	if got := send("127.0.0.1:40000", nil, "Agent"); got["name"] != "Agent" {
+		t.Errorf("a loopback reply is signed %v", got["name"])
+	}
+}
+
+func TestAccountsWhoami(t *testing.T) {
+	_, h, _ := testAccounts(t)
+	c := signUp(t, h)
+	for _, k := range []struct {
+		remote string
+		cookie *http.Cookie
+		want   string
+	}{
+		{"", c, `{"name":"steve"}`},
+		{"", nil, `{"name":""}`},
+		{"127.0.0.1:40000", nil, `{"name":""}`},
+	} {
+		rec := ask(h, "GET", "/whoami", k.remote, nil, k.cookie)
+		if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != k.want {
+			t.Errorf("whoami from %q: %d %s", k.remote, rec.Code, rec.Body.String())
 		}
 	}
 }

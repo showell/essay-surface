@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/pbkdf2"
 	"crypto/rand"
@@ -224,6 +225,15 @@ func (a *accounts) startSession(w http.ResponseWriter, name string) {
 	})
 }
 
+type accountKey struct{}
+
+// accountOf is the account a request is logged in as, or "" (logged out,
+// over loopback, or a server without accounts).
+func accountOf(r *http.Request) string {
+	name, _ := r.Context().Value(accountKey{}).(string)
+	return name
+}
+
 // fromBox says whether a request came over loopback.
 func fromBox(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -252,7 +262,20 @@ func (a *accounts) wrap(h http.Handler) http.Handler {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		if fromBox(r) || a.sessionUser(r) != "" {
+		user := a.sessionUser(r)
+		if r.URL.Path == "/whoami" {
+			// The page asks, to sign a reply with the account instead of a
+			// typed name.
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			json.NewEncoder(w).Encode(map[string]string{"name": user})
+			return
+		}
+		if user != "" {
+			h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), accountKey{}, user)))
+			return
+		}
+		if fromBox(r) {
 			h.ServeHTTP(w, r)
 			return
 		}
