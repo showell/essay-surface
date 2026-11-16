@@ -395,7 +395,19 @@ func main() {
 	renderer := flag.String("note-renderer", "", "the program that renders a .note (default: render-note beside this server)")
 	comments := flag.String("comments", "", "the folder of comment files (default: comments beside the notes folder)")
 	addr := flag.String("addr", "127.0.0.1:9300", "the address to listen on")
+	passwordFile := flag.String("password-file", "", "the file holding the sign-in's password (needed to listen past loopback; see signin.go)")
 	flag.Parse()
+	if err := checkOpen(*addr, *passwordFile); err != nil {
+		log.Fatal(err)
+	}
+	var gate *signin
+	if *passwordFile != "" {
+		g, err := newSignin(*passwordFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		gate = g
+	}
 	if *comments == "" {
 		*comments = filepath.Join(filepath.Dir(filepath.Clean(*dir)), "comments")
 	}
@@ -422,6 +434,10 @@ func main() {
 	log.Printf("cpu: %d ms to start", started.Milliseconds())
 	var served atomic.Int64
 	h := s.handler()
+	if gate != nil {
+		h = gate.wrap(h)
+		log.Printf("sign-in: on, from %s; loopback needs none", *passwordFile)
+	}
 	counted := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		served.Add(1)
 		h.ServeHTTP(w, r)
