@@ -19,7 +19,7 @@
 --   shale scripts/check_before_release.shale dir=/abs/path/notes
 -- The real notes are only read: the bench copies them first, and every
 -- server's comments go to a scratch folder under .run.
-local dir = arg("dir", "/home/steve/essay-dogfood/notes")
+local dir = arg("dir", "/home/steve/essays/notes")
 
 -- One stage run: its verdict and times, and the last s.shown lines of its
 -- own output. Gives "PASS" or "FAIL".

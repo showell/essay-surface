@@ -11,8 +11,8 @@
 -- is already gone. Each removal is one printed line; dry=1 prints them and
 -- removes nothing.
 --
---   cd /home/steve && shale repos:essay-surface/scripts/prune_notes.shale data=essay-dogfood
---   ... data=essay-dogfood keep=20 dry=1
+--   cd /home/steve && shale repos:essay-surface/scripts/prune_notes.shale data=essays
+--   ... data=essays keep=20 dry=1
 --   ... self_test=1     its plants, in a scratch folder, then nothing else
 -- budget: steps=50000000
 
@@ -160,6 +160,6 @@ local dry = arg("dry", false)
 if arg("self_test", false) then
   self_test()
 else
-  if data == "" then fail("prune_notes: name the data folder, data=essay-dogfood") end
+  if data == "" then fail("prune_notes: name the data folder, data=essays") end
   prune(data, keep, dry)
 end

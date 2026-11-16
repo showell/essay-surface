@@ -30,7 +30,7 @@
 -- the dev trial, from /tmp/claude-1000,
 --   cd /tmp/claude-1000 && shale repos:essay-surface/scripts/release.shale data=essay-trial port=9300
 -- and the real one, from the home folder,
---   cd /home/steve && shale repos:essay-surface/scripts/release.shale data=essay-dogfood port=9301
+--   cd /home/steve && shale repos:essay-surface/scripts/release.shale data=essays port=9301
 -- repo= is the checkout to check and build (repos:essay-surface).
 -- Give the Bash call 300 s: the full check is most of a release's time,
 -- and a run killed from outside cannot put anything back. Steps 5 and 6
