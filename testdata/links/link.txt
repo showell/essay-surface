@@ -9,9 +9,9 @@ see https://x.org now
 ~~ want
 <p id="p1">see <a href="https://x.org">https://x.org</a> now</p>
 ~~ case: http, an address and a port
-http://143.244.172.148:9210/tutorial/
+http://203.0.113.9:9210/tutorial/
 ~~ want
-<p id="p1"><a href="http://143.244.172.148:9210/tutorial/">http://143.244.172.148:9210/tutorial/</a></p>
+<p id="p1"><a href="http://203.0.113.9:9210/tutorial/">http://203.0.113.9:9210/tutorial/</a></p>
 ~~ case: a path, a query and a fragment
 https://x.org/a/b.html?c=1&d=2#top
 ~~ want

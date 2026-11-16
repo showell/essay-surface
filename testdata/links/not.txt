@@ -15,10 +15,10 @@ curl https://x.org/a
 </code></pre>
 ~~ case: a fence with a language
 ```sh
-curl http://143.244.172.148:9210/
+curl http://203.0.113.9:9210/
 ```
 ~~ want
-<pre><code class="language-sh">curl http://143.244.172.148:9210/
+<pre><code class="language-sh">curl http://203.0.113.9:9210/
 </code></pre>
 ~~ case: a markdown link is as it was
 see [the docs](https://x.org/a) now

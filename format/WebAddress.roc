@@ -40,7 +40,7 @@ is_allowed = |b| b > ' ' and b != '<' and b != '>' and b != '"' and b != 127
 
 expect [
 	"https://roc-lang.org/",
-	"http://143.244.172.148:9100/notes/x.md",
+	"http://203.0.113.9:9100/notes/x.md",
 	"https://a",
 ].all(|address| WebAddress.from_str(address).map_ok(WebAddress.to_str) == Ok(address))
 expect [
