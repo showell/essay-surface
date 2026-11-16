@@ -395,14 +395,14 @@ func main() {
 	renderer := flag.String("note-renderer", "", "the program that renders a .note (default: render-note beside this server)")
 	comments := flag.String("comments", "", "the folder of comment files (default: comments beside the notes folder)")
 	addr := flag.String("addr", "127.0.0.1:9300", "the address to listen on")
-	passwordFile := flag.String("password-file", "", "the file holding the sign-in's password (needed to listen past loopback; see signin.go)")
+	accountsDir := flag.String("accounts", "", "the folder of accounts, which every page then needs (needed to listen past loopback; see accounts.go)")
 	flag.Parse()
-	if err := checkOpen(*addr, *passwordFile); err != nil {
+	if err := checkOpen(*addr, *accountsDir); err != nil {
 		log.Fatal(err)
 	}
-	var gate *signin
-	if *passwordFile != "" {
-		g, err := newSignin(*passwordFile)
+	var gate *accounts
+	if *accountsDir != "" {
+		g, err := openAccounts(*accountsDir)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -436,7 +436,7 @@ func main() {
 	h := s.handler()
 	if gate != nil {
 		h = gate.wrap(h)
-		log.Printf("sign-in: on, from %s; loopback needs none", *passwordFile)
+		log.Printf("accounts: %d, in %s; loopback needs none", gate.count(), *accountsDir)
 	}
 	counted := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		served.Add(1)

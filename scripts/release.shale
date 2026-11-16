@@ -2,10 +2,10 @@
 -- every time, and leaves the old one running if anything is wrong.
 --   1. The checkout is clean, and exactly one server is running on the
 --      data folder, as `bin/essay-surface -notes <data>/notes -addr
---      127.0.0.1:<port>`, or, when the data folder holds a `password` file,
---      `-addr 0.0.0.0:<port> -password-file <data>/password` (the sign-in,
---      signin.go). Either shape is found, so the release that first adds
---      the file replaces a loopback server. Nothing is touched otherwise.
+--      127.0.0.1:<port>`, or, when the data folder holds an `accounts`
+--      folder, `-addr 0.0.0.0:<port> -accounts <data>/accounts` (logging in,
+--      accounts.go). Either shape is found, so the release that first adds
+--      the folder replaces a loopback server. Nothing is touched otherwise.
 --   2. scripts/check_before_release.shale must end SAFE TO SHIP.
 --   3. The new server is built beside the old, as bin/essay-surface.new,
 --      with its .note renderer as bin/render-note.new, which must render
@@ -44,10 +44,10 @@ function rel_argv_loopback(t)
 end
 
 -- The server's argv, the shape this script starts: on every address behind
--- the sign-in when the data folder holds a password file, else loopback.
+-- the accounts when the data folder holds an accounts folder, else loopback.
 function rel_argv(t)
-  if not exists(t.data .. "/password") then return rel_argv_loopback(t) end
-  return {real(t.data .. "/bin/essay-surface"), "-notes", real(t.data .. "/notes"), "-addr", "0.0.0.0:" .. t.port, "-password-file", real(t.data .. "/password")}
+  if not exists(t.data .. "/accounts") then return rel_argv_loopback(t) end
+  return {real(t.data .. "/bin/essay-surface"), "-notes", real(t.data .. "/notes"), "-addr", "0.0.0.0:" .. t.port, "-accounts", real(t.data .. "/accounts")}
 end
 
 -- The running servers whose command line is either shape's argv.
