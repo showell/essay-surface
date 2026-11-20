@@ -2,6 +2,8 @@
 
 A small web app for writing notes in markdown and reading them in a browser, with comments on any paragraph. A Go server, a JavaScript front end.
 
+The code here was written by AI coding agents (Claude), with human supervision.
+
 Phones are out of scope: the pages are made for, and checked in, a desktop browser.
 
 Notes are transient. A live data folder's notes are never committed anywhere, and `scripts/prune_notes.shale` keeps only the newest 20, removing the rest with their comments. A note that drafts something durable is promoted to its own repo before it rolls off. The notes in this repo's `notes/` are samples for the tests.
