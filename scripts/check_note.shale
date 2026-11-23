@@ -6,7 +6,8 @@
 -- the limits below. It prints one PASS or FAIL line a diagram, with what it
 -- measured, and fails naming the note when any diagram fails.
 --
---   cd /home/steve/essays && shale repos:essay-surface/scripts/check_note.shale data=. note=NAME.note
+--   shale repos:essay-surface/scripts/check_note.shale note=NAME.note
+--   ... data=<folder or mount:>   another data folder than the `essays:` mount
 --   ... self_test=1     its plants, in a scratch folder, then nothing else
 --
 -- render-note is built here first when it is missing or older than format/.
@@ -294,17 +295,24 @@ function self_test(repo)
   print("check_note self_test: PASS")
 end
 
-local data = arg("data", "")
+-- The data folder's `sub` folder or file: a mount's name joins with no slash.
+function in_data(data, sub)
+  if ends_with(data, ":") then return data .. sub end
+  return data .. "/" .. sub
+end
+
+-- Under Landlock a run rooted at the home folder can start no program, since
+-- the home holds the secrets folder, so this says where to run from instead.
+if real("") == "/home/steve" then fail("check_note: run from ~/showell_repos, not the home folder: shale repos:essay-surface/scripts/check_note.shale note=NAME.note") end
+
+local data = arg("data", "essays:")
 local note = arg("note", "")
 local repo = repo_dir()
 if arg("self_test", false) then
   self_test(repo)
 else
-  if data == "" or note == "" then fail("check_note: name the data folder and the note, data=essays note=NAME.note") end
-  -- `data=.` is the root itself, for a run rooted at the data folder: under
-  -- Landlock a run may not be rooted at a folder holding a secrets folder.
-  local path = data .. "/notes/" .. note
-  if data == "." then path = "notes/" .. note end
+  if note == "" then fail("check_note: name the note, note=NAME.note") end
+  local path = in_data(data, "notes/" .. note)
   if not exists(path) then fail("check_note: no note at " .. path) end
   if not ends_with(note, ".note") then fail("check_note: " .. note .. " isn't a .note") end
   check(repo, path)

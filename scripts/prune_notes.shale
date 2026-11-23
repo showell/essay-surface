@@ -11,10 +11,17 @@
 -- is already gone. Each removal is one printed line; dry=1 prints them and
 -- removes nothing.
 --
---   cd /home/steve && shale repos:essay-surface/scripts/prune_notes.shale data=essays
---   ... data=essays keep=20 dry=1
+--   shale repos:essay-surface/scripts/prune_notes.shale
+--   ... keep=20 dry=1
+--   ... data=<folder or mount:>   another data folder than the `essays:` mount
 --   ... self_test=1     its plants, in a scratch folder, then nothing else
 -- budget: steps=50000000
+
+-- The data folder's `sub` folder: a mount's name joins with no slash.
+function under(data, sub)
+  if ends_with(data, ":") then return data .. sub end
+  return data .. "/" .. sub
+end
 
 function is_note(name)
   return ends_with(name, ".md") or ends_with(name, ".note")
@@ -23,8 +30,8 @@ end
 -- What a prune of `data` would do: {kept, removed}, each a list of paths.
 function plan_prune(data, keep)
   if keep < 1 then fail("prune_notes: keep must be at least 1, not " .. keep) end
-  local notes_dir = data .. "/notes"
-  local comments_dir = data .. "/comments"
+  local notes_dir = under(data, "notes")
+  local comments_dir = under(data, "comments")
   if not exists(notes_dir) then fail("prune_notes: no notes folder at " .. notes_dir) end
   local notes = {}
   local attachments = {}
@@ -154,12 +161,11 @@ function self_test()
   print("prune_notes self_test: PASS")
 end
 
-local data = arg("data", "")
+local data = arg("data", "essays:")
 local keep = arg("keep", 20)
 local dry = arg("dry", false)
 if arg("self_test", false) then
   self_test()
 else
-  if data == "" then fail("prune_notes: name the data folder, data=essays") end
   prune(data, keep, dry)
 end
