@@ -391,7 +391,7 @@ func indexPage(list []*note) []byte {
 		b.WriteString(`">`)
 		b.WriteString(n.title)
 		b.WriteString(`</a><span class="date">`)
-		b.WriteString(n.date.Format("2006-01-02"))
+		b.WriteString(n.when())
 		b.WriteString("</span></li>\n")
 	}
 	b.WriteString("</ul>\n</main></body></html>\n")

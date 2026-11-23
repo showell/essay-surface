@@ -67,6 +67,31 @@ func TestIndexNewestFirst(t *testing.T) {
 	}
 }
 
+// Notes that date themselves to the same day are ordered by when their files
+// last changed, newest first, and the index shows that minute.
+func TestIndexSameDayByMinute(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Date(2026, 11, 23, 9, 5, 0, 0, time.Local)
+	text := "# %s\n\n*2026-11-23. A note.*\n"
+	writeNote(t, dir, "a-morning.md", fmt.Sprintf(text, "Morning"), at)
+	writeNote(t, dir, "b-evening.md", fmt.Sprintf(text, "Evening"), at.Add(11*time.Hour))
+	writeNote(t, dir, "c-noon.md", fmt.Sprintf(text, "Noon"), at.Add(3*time.Hour))
+	h := testStore(t, dir).handler()
+	code, body := get(t, h, "/")
+	if code != 200 {
+		t.Fatalf("index: %d", code)
+	}
+	iEvening := strings.Index(body, "Evening")
+	iNoon := strings.Index(body, "Noon")
+	iMorning := strings.Index(body, "Morning")
+	if iEvening < 0 || iNoon < 0 || iMorning < 0 || !(iEvening < iNoon && iNoon < iMorning) {
+		t.Errorf("want evening, noon, morning in that order; at %d, %d, %d", iEvening, iNoon, iMorning)
+	}
+	if !strings.Contains(body, "2026-11-23 20:05") || !strings.Contains(body, "2026-11-23 09:05") {
+		t.Error("the index lacks a note's minute")
+	}
+}
+
 func TestNotePage(t *testing.T) {
 	dir := t.TempDir()
 	writeNote(t, dir, "a.md", "# Hello\n\nsome *text*\n", time.Now())

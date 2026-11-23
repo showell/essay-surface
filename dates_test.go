@@ -89,7 +89,8 @@ func TestDatesFromNoteGitAndFile(t *testing.T) {
 			t.Errorf("%s is out of order", w.name)
 		}
 		at = i
-		if line := body[i:min(len(body), i+200)]; !strings.Contains(line, `<span class="date">`+w.date+`</span>`) {
+		// The day leads the date; a minute follows it when the file changed that day.
+		if line := body[i:min(len(body), i+200)]; !strings.Contains(line, `<span class="date">`+w.date) {
 			t.Errorf("%s: want %s in %q", w.name, w.date, line)
 		}
 	}

@@ -387,7 +387,10 @@ func (s *store) makePage(name string, n *note) (*note, error) {
 	return &m, nil
 }
 
-// list gives every note, newest first, then by name.
+// list gives every note, newest first: by its day, then, within a day, by
+// when its file last changed, to the minute, then by name. A note's own date
+// line names only a day, so without the file's time every note of one day
+// would tie.
 func (s *store) list() []*note {
 	s.mu.RLock()
 	list := make([]*note, 0, len(s.notes))
@@ -396,12 +399,32 @@ func (s *store) list() []*note {
 	}
 	s.mu.RUnlock()
 	sort.Slice(list, func(a, b int) bool {
-		if !list[a].date.Equal(list[b].date) {
-			return list[a].date.After(list[b].date)
+		dayA, dayB := list[a].day(), list[b].day()
+		if dayA != dayB {
+			return dayA > dayB
+		}
+		minuteA, minuteB := list[a].minute(), list[b].minute()
+		if !minuteA.Equal(minuteB) {
+			return minuteA.After(minuteB)
 		}
 		return list[a].name < list[b].name
 	})
 	return list
+}
+
+// day is the note's date as the index shows it, which also orders days.
+func (n *note) day() string { return n.date.Format("2006-01-02") }
+
+// minute is when the note's file last changed, to the minute.
+func (n *note) minute() time.Time { return n.modified.Truncate(time.Minute) }
+
+// when is the index's date for a note: its day, and the minute its file last
+// changed when that falls on the same day.
+func (n *note) when() string {
+	if n.modified.Format("2006-01-02") == n.day() {
+		return n.day() + " " + n.modified.Format("15:04")
+	}
+	return n.day()
 }
 
 // indexPage gives the index page, made again only after a note changed.
