@@ -16,8 +16,14 @@ var commentJS string
 //go:embed tables.js
 var tablesJS string
 
+// copyJS gives every code block a button that copies its text.
+//
+//go:embed copy.js
+var copyJS string
+
 var (
 	commentStyle  = "<style>\n" + commentCSS + "</style>\n"
 	commentScript = "<script>\n" + commentJS + "</script>\n"
 	tablesScript  = "<script>\n" + tablesJS + "</script>\n"
+	copyScript    = "<script>\n" + copyJS + "</script>\n"
 )

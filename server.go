@@ -267,6 +267,9 @@ blockquote{border-left:3px solid var(--rule);padding:0 0 0 1rem;color:var(--mute
 code{font:.85em/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code-bg);padding:.1em .3em;border-radius:3px}
 pre{background:var(--code-bg);padding:.75rem 1rem;border-radius:6px;overflow-x:auto}
 pre code{background:none;padding:0;font-size:.8rem}
+.copypin{position:relative;height:0}
+.copybtn{position:absolute;top:.35rem;right:.35rem;padding:.15rem .45rem;border:1px solid var(--rule);border-radius:4px;background:var(--bg);color:var(--muted);font:600 .72rem/1.2 system-ui,sans-serif;cursor:pointer;opacity:.7}
+.copybtn:hover,.copybtn:focus-visible{opacity:1;color:var(--link);border-color:var(--link)}
 .table-wrap{overflow-x:auto}
 table{border-collapse:collapse;font-size:.9rem}
 th,td{border:1px solid var(--rule);padding:.35rem .6rem;vertical-align:top}
@@ -308,7 +311,7 @@ func notePage(n *note, cs []*Comment, places []placed) []byte {
 		}
 	}
 	var b bytes.Buffer
-	b.Grow(len(n.body) + len(style) + len(commentStyle) + len(n.style) + len(commentScript) + len(tablesScript) + len(n.scripts) + 300*len(cs) + 12*len(n.blocks) + 1024)
+	b.Grow(len(n.body) + len(style) + len(commentStyle) + len(n.style) + len(commentScript) + len(tablesScript) + len(copyScript) + len(n.scripts) + 300*len(cs) + 12*len(n.blocks) + 1024)
 	pageHead(&b, n.title)
 	b.WriteString(commentStyle)
 	b.WriteString(n.style)
@@ -351,6 +354,7 @@ func notePage(n *note, cs []*Comment, places []placed) []byte {
 	b.WriteString(";</script>\n")
 	b.WriteString(commentScript)
 	b.WriteString(tablesScript)
+	b.WriteString(copyScript)
 	b.WriteString(n.scripts)
 	b.WriteString("</main></body></html>\n")
 	return b.Bytes()
