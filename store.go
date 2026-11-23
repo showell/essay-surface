@@ -31,11 +31,15 @@ type note struct {
 	date     time.Time
 	from     dateFrom
 	modified time.Time // the file's, the last of the three dates
-	body     string    // the rendered note, blocks marked
-	blocks   []Block   // its commentable blocks
-	style    string    // what its page adds to the style: a .note's, or nothing
-	scripts  string    // what its page adds to the scripts: a .note's diagrams, or nothing
-	page     []byte    // the whole page with its comments, or nil until made
+	// moment orders a day's notes and gives the index its minute: the last
+	// commit when git has the note, so a fresh clone orders it the same, and
+	// the file's time otherwise.
+	moment  time.Time
+	body    string  // the rendered note, blocks marked
+	blocks  []Block // its commentable blocks
+	style   string  // what its page adds to the style: a .note's, or nothing
+	scripts string  // what its page adds to the scripts: a .note's diagrams, or nothing
+	page    []byte  // the whole page with its comments, or nil until made
 }
 
 type store struct {
@@ -178,7 +182,7 @@ func (s *store) load(name string) (*note, error) {
 		return nil, err
 	}
 	text := string(src)
-	n := &note{name: name, modified: info.ModTime()}
+	n := &note{name: name, modified: info.ModTime(), moment: info.ModTime()}
 	if d, ok := noteDate(text); ok {
 		n.date, n.from = d, dateFromNote
 	} else {
@@ -198,11 +202,12 @@ func (s *store) load(name string) (*note, error) {
 }
 
 // datesFromGit dates the notes that do not date themselves by their last
-// commit. Git is asked once for every name it has not been asked about.
+// commit, and gives every note git has its last commit as its moment. Git is
+// asked once for every name it has not been asked about.
 func (s *store) datesFromGit(fresh []*note) {
 	var ask []string
 	for _, n := range fresh {
-		if _, asked := s.gitWhen[n.name]; n.from != dateFromNote && !asked {
+		if _, asked := s.gitWhen[n.name]; !asked {
 			ask = append(ask, n.name)
 		}
 	}
@@ -220,7 +225,12 @@ func (s *store) datesFromGit(fresh []*note) {
 		}
 	}
 	for _, n := range fresh {
-		if t := s.gitWhen[n.name]; n.from != dateFromNote && !t.IsZero() {
+		t := s.gitWhen[n.name]
+		if t.IsZero() {
+			continue
+		}
+		n.moment = t
+		if n.from != dateFromNote {
 			n.date, n.from = t, dateFromGit
 		}
 	}
@@ -388,9 +398,8 @@ func (s *store) makePage(name string, n *note) (*note, error) {
 }
 
 // list gives every note, newest first: by its day, then, within a day, by
-// when its file last changed, to the minute, then by name. A note's own date
-// line names only a day, so without the file's time every note of one day
-// would tie.
+// its moment to the minute, then by name. A note's own date line names only
+// a day, so without a moment every note of one day would tie.
 func (s *store) list() []*note {
 	s.mu.RLock()
 	list := make([]*note, 0, len(s.notes))
@@ -415,14 +424,14 @@ func (s *store) list() []*note {
 // day is the note's date as the index shows it, which also orders days.
 func (n *note) day() string { return n.date.Format("2006-01-02") }
 
-// minute is when the note's file last changed, to the minute.
-func (n *note) minute() time.Time { return n.modified.Truncate(time.Minute) }
+// minute is the note's moment, to the minute.
+func (n *note) minute() time.Time { return n.moment.Truncate(time.Minute) }
 
-// when is the index's date for a note: its day, and the minute its file last
-// changed when that falls on the same day.
+// when is the index's date for a note: its day, and its moment's minute when
+// that falls on the same day.
 func (n *note) when() string {
-	if n.modified.Format("2006-01-02") == n.day() {
-		return n.day() + " " + n.modified.Format("15:04")
+	if n.moment.Format("2006-01-02") == n.day() {
+		return n.day() + " " + n.moment.Format("15:04")
 	}
 	return n.day()
 }

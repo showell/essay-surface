@@ -22,7 +22,8 @@ function index_of(notes, tag)
   essay_stop(job, log)
   if not r.ok then fail(tag .. ": " .. r.error) end
   local rows = {}
-  for m in re_find_all(r.value.body, "href=\"/notes/([^\"]+)\">[^<]*</a><span class=\"date\">([0-9-]+)<") do
+  -- The date is a day, then a minute when the note's moment falls that day.
+  for m in re_find_all(r.value.body, "href=\"/notes/([^\"]+)\">[^<]*</a><span class=\"date\">([0-9-]+)( [0-9:]+)?<") do
     push(rows, {note = m.groups[1], date = m.groups[2]})
   end
   local said = ""
