@@ -6,7 +6,7 @@
 -- the limits below. It prints one PASS or FAIL line a diagram, with what it
 -- measured, and fails naming the note when any diagram fails.
 --
---   cd /home/steve && shale repos:essay-surface/scripts/check_note.shale data=essays note=NAME.note
+--   cd /home/steve/essays && shale repos:essay-surface/scripts/check_note.shale data=. note=NAME.note
 --   ... self_test=1     its plants, in a scratch folder, then nothing else
 --
 -- render-note is built here first when it is missing or older than format/.
@@ -301,7 +301,10 @@ if arg("self_test", false) then
   self_test(repo)
 else
   if data == "" or note == "" then fail("check_note: name the data folder and the note, data=essays note=NAME.note") end
+  -- `data=.` is the root itself, for a run rooted at the data folder: under
+  -- Landlock a run may not be rooted at a folder holding a secrets folder.
   local path = data .. "/notes/" .. note
+  if data == "." then path = "notes/" .. note end
   if not exists(path) then fail("check_note: no note at " .. path) end
   if not ends_with(note, ".note") then fail("check_note: " .. note .. " isn't a .note") end
   check(repo, path)
