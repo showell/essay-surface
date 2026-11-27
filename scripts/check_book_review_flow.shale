@@ -1,0 +1,72 @@
+-- This script checks the book review through the real server, over HTTP. A
+-- book of its own, two chapters in .run/books/next/demo, named in
+-- .run/books/books.txt; its replies in .run/books/book-replies. It reads a
+-- chapter and finds the widget, posts a reply with stars and one without,
+-- has a bad one refused, reads the replies file back, and runs
+-- read_book_replies.shale on the folder. The server is stopped before the
+-- verdict.
+--   shale scripts/check_book_review_flow.shale
+const DIR = ".run/books"
+const BOOK = ".run/books/next/demo"
+const FILE = ".run/books/book-replies/demo.jsonl"
+const LOG = ".run/books/server.log"
+
+function want(cond, what, out)
+  if not cond then fail("not so: " .. what) end
+  push(out, "ok: " .. what)
+end
+
+function reply(body)
+  return http("POST", essay_base() .. "/books/demo/replies", {headers = {"Content-Type: application/json"}, body = body})
+end
+
+function flow()
+  local out = {}
+  local page = http_get(essay_base() .. "/books/demo/the-machine.html")
+  want(page.status == 200 and find(page.body, "data-essay-book-review") ~= nil, "a chapter is served with the review widget", out)
+  want(find(page.body, "page: \"the-machine\"") ~= nil, "the widget knows its chapter", out)
+  local css = http_get(essay_base() .. "/books/demo/book.css")
+  want(css.status == 200 and find(css.body, "data-essay-book-review") == nil, "the stylesheet is served as it is", out)
+  local starred = reply([=[{"page":"the-machine","stars":4,"text":"Clear, and <short> & sweet.","name":"Flow"}]=])
+  want(starred.status == 201, "a reply with 4 stars is posted (201)", out)
+  local plain = reply([=[{"page":"index","stars":null,"text":"No view on stars yet.","name":"Flow"}]=])
+  want(plain.status == 201, "a reply without stars is posted (201)", out)
+  local bad = reply([=[{"page":"index","stars":9,"text":"x","name":"Flow"}]=])
+  want(bad.status == 400, "a reply with 9 stars is refused (400)", out)
+  local missing = reply([=[{"page":"no-such-chapter","text":"x","name":"Flow"}]=])
+  want(missing.status == 404, "a reply to a chapter the book lacks is refused (404)", out)
+  local rows = {}
+  for l in lines(read(FILE)) do
+    if trim(l) ~= "" then push(rows, json_read(l)) end
+  end
+  want(#rows == 2, "the replies file holds the 2 replies", out)
+  want(rows[1].page == "the-machine" and rows[1].title == "The machine" and rows[1].stars == 4 and rows[1].book == "demo", "the first is tied to its chapter, with its title and 4 stars", out)
+  want(rows[1].text == "Clear, and <short> & sweet.", "its text is kept as written", out)
+  want(rows[2].page == "index" and not has_key(rows[2], "stars") and find(read(FILE), "\"stars\":null") ~= nil, "the second has its stars as null", out)
+  local said = must(run({"shale", "scripts/read_book_replies.shale", "book=demo", "data=" .. DIR}, {timeout_ms = 30000, tail = 40})).out
+  want(find(said, "demo: 2 replies on 2 chapters") ~= nil, "read_book_replies counts them", out)
+  want(find(said, "== The machine (the-machine.html): 1 reply; stars 4") ~= nil and find(said, "Flow, no stars") ~= nil, "and prints each by chapter, with its stars or none", out)
+  return out
+end
+
+essay_build()
+essay_fresh(DIR)
+mkdir(DIR .. "/notes")
+mkdir(BOOK)
+create(BOOK .. "/index.html", "<!doctype html>\n<html><head><title>Demo</title><link rel=\"stylesheet\" href=\"book.css\"></head>\n<body><main><h1>Demo</h1><p>A book of two pages.</p></main>\n</body>\n</html>\n")
+create(BOOK .. "/the-machine.html", "<!doctype html>\n<html><head><title>The machine · Demo</title></head>\n<body><main><h1 id=\"the-machine\">The machine</h1><p>Six lines.</p></main>\n</body>\n</html>\n")
+create(BOOK .. "/book.css", "body { margin: 0; }\n")
+create(DIR .. "/books.txt", "demo " .. real(BOOK) .. "\n")
+local argv = {"./essay-surface", "-notes", DIR .. "/notes", "-comments", DIR .. "/comments", "-books", DIR .. "/books.txt", "-book-replies", DIR .. "/book-replies", "-addr", "127.0.0.1:9310"}
+local job = job_start(argv, {log = LOG, cwd = ".", want = "build: the server we just built"})
+local w = job_wait(job, {timeout_ms = 30000, contains = "listening"})
+if w.ended ~= "found" then
+  job_stop(job)
+  print(read(LOG))
+  fail("the server did not start: " .. w.ended)
+end
+local result = attempt(flow)
+essay_stop(job, LOG)
+print("server stopped")
+if not result.ok then fail("the book review flow stopped: " .. result.error .. " (line " .. result.line .. ")") end
+for l in result.value do print(l) end

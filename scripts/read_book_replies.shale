@@ -1,0 +1,77 @@
+-- read_book_replies.shale: prints a book's replies by chapter, so they can
+-- be acted on. The replies are the data folder's book-replies/<book>.jsonl,
+-- which the server writes when a reader replies to a staged book's chapter
+-- (books.go). The chapters come in the order of their first reply, and each
+-- chapter's replies in the order they were made, each with its time, its
+-- name, its stars ("no stars" when they were left unset) and its text.
+--
+--   shale repos:essay-surface/scripts/read_book_replies.shale book=cook-levin
+--   ... data=<folder or mount:>   another data folder than the `essays:` mount
+--   ... page=the-machine          one chapter alone
+
+-- The data folder's `sub` folder: a mount's name joins with no slash.
+function under(data, sub)
+  if ends_with(data, ":") then return data .. sub end
+  return data .. "/" .. sub
+end
+
+-- A count with its noun, one or many.
+function counted(n, one, many)
+  if n == 1 then return "1 " .. one end
+  return n .. " " .. many
+end
+
+function stars_said(r)
+  if not has_key(r, "stars") then return "no stars" end
+  if r.stars == 1 then return "1 star" end
+  return r.stars .. " stars"
+end
+
+function main()
+  local book = arg("book", "")
+  local data = arg("data", "essays:")
+  local only = arg("page", "")
+  if book == "" then fail("read_book_replies: name the book, book=<name> (cook-levin, js-book)") end
+  local file = under(data, "book-replies/" .. book .. ".jsonl")
+  if not exists(file) then
+    print(book .. ": no replies yet (no " .. file .. ")")
+    return nil
+  end
+  local order = {}
+  local by = {}
+  local titles = {}
+  local count = 0
+  local n = 0
+  for l in lines(read(file)) do
+    n = n + 1
+    if trim(l) ~= "" then
+      local r = json_read(l)
+      if r.book ~= book then fail("read_book_replies: " .. file .. ":" .. n .. " is a reply to " .. r.book .. ", not " .. book) end
+      if only == "" or r.page == only then
+        if not has_key(by, r.page) then push(order, r.page) end
+        push_at(by, r.page, r)
+        titles[r.page] = r.title
+        count = count + 1
+      end
+    end
+  end
+  print(book .. ": " .. counted(count, "reply", "replies") .. " on " .. counted(#order, "chapter", "chapters") .. ", from " .. file)
+  for page in order do
+    local rs = by[page]
+    local given = {}
+    for r in rs do push(given, has_key(r, "stars") and ("" .. r.stars) or "-") end
+    print("")
+    print("== " .. titles[page] .. " (" .. page .. ".html): " .. counted(#rs, "reply", "replies") .. "; stars " .. join(given, ", "))
+    for r in rs do
+      print(substitute(sub(r.time, 1, 16), "T", " ") .. "  " .. r.name .. ", " .. stars_said(r) .. ", id " .. r.id)
+      if r.text == "" then
+        print("    (no text)")
+      else
+        for t in lines(r.text) do print("    " .. t) end
+      end
+    end
+  end
+  return nil
+end
+
+main()

@@ -46,6 +46,7 @@ type store struct {
 	dir      string // the notes
 	comments string // the comments, one file a note
 	renderer string // the program that renders a .note (note.go)
+	books    *books // the books under review and their replies (books.go)
 	watch    *watcher
 
 	// The watches: the notes folder, the comments folder (-1 while it is
@@ -90,7 +91,8 @@ func newStore(dir, comments, renderer string) (*store, error) {
 	}
 	s := &store{dir: dir, comments: comments, renderer: renderer, watch: w, commentsWd: -1,
 		pendingNotes: map[string]bool{}, pendingPages: map[string]bool{},
-		gitWhen: map[string]time.Time{}, notes: map[string]*note{}}
+		gitWhen: map[string]time.Time{}, notes: map[string]*note{},
+		books: &books{folders: map[string]string{}, replies: filepath.Join(parent, "book-replies")}}
 	if s.parentWd, err = w.add(filepath.Dir(comments)); err != nil {
 		w.close()
 		return nil, fmt.Errorf("the comments folder's parent: %w", err)

@@ -249,6 +249,10 @@ func (s *store) handler() http.Handler {
 	mux.HandleFunc("POST /notes/{name}/comments", s.postComment)
 	mux.HandleFunc("GET /assets/viz-standalone.js", serveAsset(vizJS))
 	mux.HandleFunc("GET /assets/diagrams.js", serveAsset(diagramsJS))
+	mux.HandleFunc("GET /books/{$}", s.books.serveBookList)
+	mux.HandleFunc("GET /books/{book}", s.books.serveBook)
+	mux.HandleFunc("GET /books/{book}/{rest...}", s.books.serveBook)
+	mux.HandleFunc("POST /books/{book}/replies", s.postReply)
 	return mux
 }
 
@@ -403,6 +407,8 @@ func main() {
 	renderer := flag.String("note-renderer", "", "the program that renders a .note (default: render-note beside this server)")
 	comments := flag.String("comments", "", "the folder of comment files (default: comments beside the notes folder)")
 	addr := flag.String("addr", "127.0.0.1:9300", "the address to listen on")
+	bookList := flag.String("books", "", "the file naming the books under review, `<book> <absolute folder>` a line (books.go)")
+	bookReplies := flag.String("book-replies", "", "the folder of the books' replies (default: book-replies beside the notes folder)")
 	accountsDir := flag.String("accounts", "", "the folder of accounts, which every page then needs (needed to listen past loopback; see accounts.go)")
 	flag.Parse()
 	if err := checkOpen(*addr, *accountsDir); err != nil {
@@ -430,6 +436,15 @@ func main() {
 	s, err := newStore(*dir, *comments, *renderer)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *bookReplies == "" {
+		*bookReplies = filepath.Join(filepath.Dir(filepath.Clean(*dir)), "book-replies")
+	}
+	if s.books, err = readBooks(*bookList, *bookReplies); err != nil {
+		log.Fatal(err)
+	}
+	if len(s.books.folders) > 0 {
+		log.Printf("books under review: %s; replies in %s", strings.Join(sortedKeys(s.books.folders), ", "), *bookReplies)
 	}
 	from := s.dateSources()
 	log.Printf("rendered %d notes from %s in %s; comments in %s", len(s.list()), *dir, time.Since(start).Round(time.Millisecond), *comments)
