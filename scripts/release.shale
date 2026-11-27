@@ -4,13 +4,15 @@
 --      data folder, as `bin/essay-surface -notes <data>/notes -addr
 --      127.0.0.1:<port>`, or, when the data folder holds an `accounts`
 --      folder, `-addr 0.0.0.0:<port> -accounts <data>/accounts` (logging in,
---      accounts.go). A server is found by its binary and notes alone, so a
+--      accounts.go), each with `-books <data>/books.txt` when the data
+--      folder holds that file (books.go). A server is found by its binary and notes alone, so a
 --      release that changes the flags replaces the server it finds. Nothing is touched otherwise.
 --   2. scripts/check_before_release.shale must end SAFE TO SHIP.
 --   3. The new server is built beside the old, as bin/essay-surface.new,
 --      with its .note renderer as bin/render-note.new, which must render
 --      the demo note. From here on the renderer moves with its server.
---   4. The comments folder is copied to releases/<when>/comments and the
+--   4. The comments folder is copied to releases/<when>/comments, and the
+--      book-replies folder to releases/<when>/book-replies, and each
 --      copy compared file by file; the old server's log is kept there too,
 --      with the pages of every note that has comments, as the old server
 --      shows them.
@@ -48,16 +50,27 @@ function under(data, sub)
   return data .. "/" .. sub
 end
 
--- The server's argv on loopback alone, with no sign-in.
+-- The server's argv on loopback alone, with no sign-in, and with the
+-- books under review when the data folder names them in books.txt
+-- (books.go); their replies go to the data folder's book-replies/.
+function rel_with_books(t, argv)
+  if exists(under(t.data, "books.txt")) then
+    push(argv, "-books")
+    push(argv, real(under(t.data, "books.txt")))
+  end
+  return argv
+end
+
 function rel_argv_loopback(t)
-  return {real(under(t.data, "bin/essay-surface")), "-notes", real(under(t.data, "notes")), "-addr", "127.0.0.1:" .. t.port}
+  local argv = {real(under(t.data, "bin/essay-surface")), "-notes", real(under(t.data, "notes")), "-addr", "127.0.0.1:" .. t.port}
+  return rel_with_books(t, argv)
 end
 
 -- The server's argv, the shape this script starts: on every address behind
 -- the accounts when the data folder holds an accounts folder, else loopback.
 function rel_argv(t)
   if not exists(under(t.data, "accounts")) then return rel_argv_loopback(t) end
-  return {real(under(t.data, "bin/essay-surface")), "-notes", real(under(t.data, "notes")), "-addr", "0.0.0.0:" .. t.port, "-accounts", real(under(t.data, "accounts"))}
+  return rel_with_books(t, {real(under(t.data, "bin/essay-surface")), "-notes", real(under(t.data, "notes")), "-addr", "0.0.0.0:" .. t.port, "-accounts", real(under(t.data, "accounts"))})
 end
 
 -- The running servers on this data folder: the binary with its notes, the
@@ -421,6 +434,17 @@ if exists(t.comments) then
   local n = 0
   for k in keys(before.ids) do n = n + #before.ids[k] end
   print("comments kept: " .. files .. " files, " .. n .. " comments, in " .. t.dir .. "/comments, each compared")
+end
+-- The books' replies, kept the same way; the checks after the swap leave
+-- them alone, as the server only adds to them.
+if exists(under(t.data, "book-replies")) then
+  must(run({"cp", "-a", real(under(t.data, "book-replies")), real(t.dir) .. "/book-replies"}, {timeout_ms = 30000, tail = 5}))
+  local files = 0
+  for f in ls(under(t.data, "book-replies")) do
+    if read(under(t.data, "book-replies/" .. f)) ~= read(t.dir .. "/book-replies/" .. f) then fail("the copy of book-replies/" .. f .. " differs") end
+    files = files + 1
+  end
+  print("book replies kept: " .. files .. " files, in " .. t.dir .. "/book-replies, each compared")
 end
 before.look = rel_look(t, t.dir .. "/before", before.ids)
 -- A comment the old server's page doesn't show is "missing" before and after
